@@ -82,7 +82,10 @@ class BLEBridge:
             self._updated = time.monotonic()
         # Push a brake immediately rather than waiting for periodic streaming.
         # Stream rechecks the brake state before every write.
-        if not already_braking and self.client is not None and self.char is not None:
+        # Do not queue a write to a link already known to be disconnected.
+        client = self.client
+        if (not already_braking and client is not None
+                and client.is_connected and self.char is not None):
             self._schedule(self._urgent_brake())
 
     def latch_emergency(self):
@@ -91,7 +94,8 @@ class BLEBridge:
         with self._lock:
             self._emergency_latched = True
             self._safety_epoch += 1
-        if self.client is not None and self.char is not None:
+        client = self.client
+        if client is not None and client.is_connected and self.char is not None:
             self._schedule(self._send_emergency_latch())
 
     async def _send_emergency_latch(self):
@@ -151,13 +155,17 @@ class BLEBridge:
             self.events.put(('error', f'Cannot re-arm motors: {exc}'))
 
     async def _urgent_brake(self):
-        if self.client is not None and self.client.is_connected and self.char is not None:
-            try:
-                # _send rechecks the live state after acquiring the write lock.
-                # An old emergency task must not brake a later *new* key press.
-                await self._send(brake=True)
-            except Exception as exc:
-                self.events.put(('error', f'Immediate brake write failed: {exc}'))
+        # Queued brakes may race a genuine Bluetooth disconnect. The main
+        # disconnection handler and Arduino watchdog handle that case.
+        client = self.client
+        if client is None or not client.is_connected or self.char is None:
+            return
+        try:
+            await self._send(brake=True)
+        except Exception as exc:
+            if client is not self.client or not client.is_connected:
+                return
+            self.events.put(('error', f'Immediate brake write failed: {exc}'))
 
     def scan(self):
         if BLEAK_ERROR:
@@ -267,7 +275,14 @@ class BLEBridge:
                 self.events.put(('unknown_reply', message[:80]))
 
     def _on_disconnect(self, _client):
-        self.set_brake()
+        # Don't try to send a brake to the link that just disappeared.
+        # Fail closed locally; the Arduino's independent watchdog stops it.
+        with self._lock:
+            self._motor = (0, 0)
+            self._brake = True
+            self._emergency_latched = True
+            self._safety_epoch += 1
+            self._updated = time.monotonic()
         self.events.put(('lost', 'Bluetooth connection closed'))
 
     async def _send(self, left=0, right=0, brake=False):
