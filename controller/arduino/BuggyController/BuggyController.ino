@@ -217,7 +217,8 @@ void receiveByte(char value, FrameBuffer &frame, bool usbDebug) {
     // Preserve existing v1.6.4 app compatibility: K is an ordinary
     // active brake / watchdog-rearm command. Only X is a latched E-stop.
     watchdogLockout = false;
-    activeBrake();
+    // Preserve the stronger E-stop state under recurring ordinary K packets.
+    activeBrake(eStopLatched ? 'E' : 'B');
     return;
   }
   if (frame.receiving && value == 'M') {
