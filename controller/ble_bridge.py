@@ -38,6 +38,7 @@ class BLEBridge:
         self._lock = threading.Lock()
         self._motor = (0, 0)
         self._brake = True  # fail-safe: link must start braking
+        self._emergency_latched = False
         self._updated = time.monotonic()
         self._rx_partial = bytearray()
         self._tx_count = 0
@@ -64,6 +65,10 @@ class BLEBridge:
 
     def set_motor(self, left, right):
         with self._lock:
+            # The Arduino X latch requires an explicit U + zero frame rearm.
+            # Never enqueue movement while the software E-stop is latched.
+            if getattr(self, '_emergency_latched', False):
+                return
             self._motor = (int(max(-255, min(255, left))), int(max(-255, min(255, right))))
             self._brake = False
             self._updated = time.monotonic()
@@ -78,6 +83,60 @@ class BLEBridge:
         # Stream rechecks the brake state before every write.
         if not already_braking and self.client is not None and self.char is not None:
             self._schedule(self._urgent_brake())
+
+    def latch_emergency(self):
+        """Latch Arduino emergency stop (v1.6.5+), with old K-brake fallback."""
+        self.set_brake()
+        with self._lock:
+            self._emergency_latched = True
+        if self.client is not None and self.char is not None:
+            self._schedule(self._send_emergency_latch())
+
+    async def _send_emergency_latch(self):
+        if not self.client or not self.client.is_connected or not self.char:
+            return
+        try:
+            async with self._write_lock:
+                # Send ordinary K first for compatibility with v1.6.4.
+                await asyncio.wait_for(
+                    self.client.write_gatt_char(self.char, b'K\n', response=self.write_response),
+                    timeout=GATT_WRITE_TIMEOUT_S)
+                await asyncio.wait_for(
+                    self.client.write_gatt_char(self.char, b'X\n', response=self.write_response),
+                    timeout=GATT_WRITE_TIMEOUT_S)
+            self.events.put(('info', 'Emergency stop latched; re-arm explicitly'))
+        except Exception as exc:
+            self.events.put(('error', f'Emergency stop write failed: {exc}; cut motor battery power'))
+
+    def release_emergency(self):
+        """Explicit manual arm: unlatch X and send a zero/brake frame first."""
+        if self.client is not None and self.client.is_connected and self.char is not None:
+            self._schedule(self._release_emergency())
+
+    async def _release_emergency(self):
+        if not self.client or not self.client.is_connected or not self.char:
+            return
+        try:
+            async with self._write_lock:
+                with self._lock:
+                    self._motor = (0, 0)
+                    self._brake = True
+                    self._updated = time.monotonic()
+                await asyncio.wait_for(
+                    self.client.write_gatt_char(self.char, b'U\n', response=self.write_response),
+                    timeout=GATT_WRITE_TIMEOUT_S)
+                await asyncio.wait_for(
+                    self.client.write_gatt_char(self.char, b'M,0,0\n', response=self.write_response),
+                    timeout=GATT_WRITE_TIMEOUT_S)
+                with self._lock:
+                    self._emergency_latched = False
+            self.events.put(('info', 'Motor arm sequence sent; wheels remain braked until new input'))
+        except Exception as exc:
+            with self._lock:
+                self._emergency_latched = True
+                self._brake = True
+                self._motor = (0, 0)
+            self.events.put(('error', f'Cannot re-arm motors: {exc}'))
 
     async def _urgent_brake(self):
         if self.client is not None and self.client.is_connected and self.char is not None:
@@ -156,6 +215,11 @@ class BLEBridge:
             # brake before declaring the link ready or starting the stream.
             self.set_brake()
             await self._send(brake=True)
+            # A new connection must not clear a previous firmware E-stop.
+            # Latch until the user explicitly arms after verifying safety.
+            await self._send_emergency_latch()
+            with self._lock:
+                self._emergency_latched = True
             self.stream_task = asyncio.create_task(self._stream())
             self.events.put(('connected', device.name or device.address))
         except Exception as exc:
@@ -270,7 +334,9 @@ class BLEBridge:
                 if not self.client or not self.client.is_connected:
                     raise RuntimeError('BLE link disappeared before handshake')
                 async with self._write_lock:
-                    await self.client.write_gatt_char(self.char, b'Q\n', response=self.write_response)
+                    await asyncio.wait_for(
+                        self.client.write_gatt_char(self.char, b'Q\n', response=self.write_response),
+                        timeout=GATT_WRITE_TIMEOUT_S)
                 self.events.put(('probe_sent', attempt + 1))
                 await asyncio.sleep(0.4)
         except Exception as exc:
