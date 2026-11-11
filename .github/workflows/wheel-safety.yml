@@ -1,0 +1,23 @@
+name: Wheel safety checks
+on:
+  push:
+  pull_request:
+jobs:
+  test-and-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b163ceea73d27597364c9af683 # v4.2.2
+      - name: Python wheel mixer tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Native Arduino firmware state-machine simulation
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Itests/arduino_stubs \
+            tests/firmware_harness.cpp -o /tmp/firmware-harness
+          /tmp/firmware-harness
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Compile both sketches for Arduino Uno
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+          arduino-cli compile --fqbn arduino:avr:uno controller/arduino/BuggyController
+          arduino-cli compile --fqbn arduino:avr:uno controller/arduino/MotorTest
