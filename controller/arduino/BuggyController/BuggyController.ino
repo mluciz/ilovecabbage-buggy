@@ -323,7 +323,7 @@ void loop() {
   // SoftwareSerial TX can drop incoming bytes; only report while braked,
   // after the receive buffer has been quiet for a generous gap.
   if (!bleFrame.receiving && BT.available() == 0 &&
-      (TELEMETRY_WHILE_MOVING || (currentLeft == 0 && currentRight == 0)) &&
+      (TELEMETRY_WHILE_MOVING || (currentLeft == 0 && currentRight == 0 && !reversalPending)) &&
       millis() - bleFrame.lastByteAt >= RX_QUIET_MS) {
     if (handshakePending) {
       handshakePending = false;
