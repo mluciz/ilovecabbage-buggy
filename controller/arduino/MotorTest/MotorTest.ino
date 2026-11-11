@@ -1,89 +1,82 @@
 /*
-  BUGGY MOTOR CHANNEL LAB v1.6.3 — NO BLUETOOTH REQUIRED.
-
-  SAFETY:
-  - MOTOR BATTERY OFF while uploading; wheels raised for the entire test.
-  - Arduino Uno to TB6612FNG wiring: D4 STBY, D5 PWMA, D6 PWMB,
-    D7 AIN1, D8 AIN2, D9 BIN1, D10 BIN2.
-  - Motor VM is powered separately, with a shared GND and a physical switch.
-  - Starts in ACTIVE SHORT BRAKE, NEVER drives automatically on upload/reset.
-  - Open USB Serial Monitor at 9600, type T + Send to run each test ONCE.
-  - Cut battery power immediately if a wheel turns without a command.
-
-  Sequence: LEFT FORWARD, LEFT REVERSE, RIGHT FORWARD, RIGHT REVERSE,
-            BOTH FORWARD, BOTH REVERSE, then ACTIVE BRAKE.
-  Right-only reverse is included to diagnose the previously reported fault.
+  Buggy Motor Test v1.6.5 — standalone Arduino Uno sketch.
+  SAFETY: wheels lifted, motor battery disconnected during upload, and
+  physical battery cut-off reachable. Tests are NOT run on power-up.
+  Serial Monitor: 9600 baud; send T to start, X or S to abort immediately.
+  Drives each channel at low PWM, independently in both directions.
+  This is an OPEN-LOOP test: it does not confirm actual wheel speed.
 */
-const byte STBY = 4;
-const byte PWMA = 5;
-const byte PWMB = 6;
-const byte AIN1 = 7;
-const byte AIN2 = 8;
-const byte BIN1 = 9;
-const byte BIN2 = 10;
-const int TEST_PWM = 220;
+const byte STBY=4, PWMA=5, PWMB=6, AIN1=7, AIN2=8, BIN1=9, BIN2=10;
+const int TEST_PWM=160;
+const unsigned long RUN_MS=650, GAP_MS=600;
+bool running=false;
+bool inGap=false;
+byte step=0;
+unsigned long phaseAt=0;
 
 void brake() {
-  digitalWrite(AIN1, HIGH);
-  digitalWrite(AIN2, HIGH);
-  digitalWrite(BIN1, HIGH);
-  digitalWrite(BIN2, HIGH);
-  analogWrite(PWMA, 255);
-  analogWrite(PWMB, 255);
+  analogWrite(PWMA,0); analogWrite(PWMB,0);
+  digitalWrite(AIN1,HIGH); digitalWrite(AIN2,HIGH);
+  digitalWrite(BIN1,HIGH); digitalWrite(BIN2,HIGH);
+  analogWrite(PWMA,255); analogWrite(PWMB,255);
 }
-void channel(byte pwm, byte in1, byte in2, int speed) {
-  analogWrite(pwm, 0);
-  if (speed == 0) {
-    digitalWrite(in1, HIGH);
-    digitalWrite(in2, HIGH);
-    analogWrite(pwm, 255);
-    return;
+void channelDirection(byte a,byte b,int value) {
+  digitalWrite(a, value>=0 ? HIGH:LOW);
+  digitalWrite(b, value>0 ? LOW:HIGH);
+}
+void wheels(int left,int right) {
+  analogWrite(PWMA,0); analogWrite(PWMB,0);
+  channelDirection(AIN1,AIN2,left);
+  channelDirection(BIN1,BIN2,right);
+  analogWrite(PWMA,left==0 ? 255 : abs(left));
+  analogWrite(PWMB,right==0 ? 255 : abs(right));
+}
+void startStep(byte n) {
+  switch(n) {
+    case 0: Serial.println(F("1/6 LEFT FORWARD"));  wheels(TEST_PWM,0); break;
+    case 1: Serial.println(F("2/6 LEFT REVERSE"));  wheels(-TEST_PWM,0); break;
+    case 2: Serial.println(F("3/6 RIGHT FORWARD")); wheels(0,TEST_PWM); break;
+    case 3: Serial.println(F("4/6 RIGHT REVERSE")); wheels(0,-TEST_PWM); break;
+    case 4: Serial.println(F("5/6 BOTH FORWARD"));  wheels(TEST_PWM,TEST_PWM); break;
+    case 5: Serial.println(F("6/6 BOTH REVERSE"));  wheels(-TEST_PWM,-TEST_PWM); break;
   }
-  digitalWrite(in1, speed > 0 ? HIGH : LOW);
-  digitalWrite(in2, speed < 0 ? HIGH : LOW);
-  analogWrite(pwm, abs(speed));
+  phaseAt=millis();
 }
-void wheels(int left, int right) {
-  channel(PWMA, AIN1, AIN2, left);
-  channel(PWMB, BIN1, BIN2, right);
-}
-void test(const __FlashStringHelper* name, int left, int right) {
-  brake();
-  delay(500);
-  Serial.println(name);
-  wheels(left, right);
-  delay(1200);
-  brake();
-  delay(1000);
+void abortTest() {
+  brake(); running=false; inGap=false;
+  Serial.println(F("STOPPED / BRAKED"));
 }
 void setup() {
-  pinMode(STBY, OUTPUT);
-  digitalWrite(STBY, LOW);
-  pinMode(PWMA, OUTPUT);
-  pinMode(PWMB, OUTPUT);
-  pinMode(AIN1, OUTPUT);
-  pinMode(AIN2, OUTPUT);
-  pinMode(BIN1, OUTPUT);
-  pinMode(BIN2, OUTPUT);
+  pinMode(STBY,OUTPUT); digitalWrite(STBY,LOW);
+  pinMode(PWMA,OUTPUT); pinMode(PWMB,OUTPUT);
+  pinMode(AIN1,OUTPUT); pinMode(AIN2,OUTPUT);
+  pinMode(BIN1,OUTPUT); pinMode(BIN2,OUTPUT);
   brake();
   Serial.begin(9600);
-  digitalWrite(STBY, HIGH);  // Enable only after both channels have brake pins.
-  Serial.println(F("MOTOR CHANNEL LAB READY / BRAKED"));
-  Serial.println(F("Raise wheels; send T to run 6 short tests."));
+  digitalWrite(STBY,HIGH);
+  Serial.println(F("WHEELS UP + MOTOR SWITCH READY? Send T, X/S abort."));
 }
 void loop() {
-  if (Serial.available()) {
-    const char c = (char)Serial.read();
-    if (c == 'T' || c == 't') {
-      Serial.println(F("TEST START — CUT MOTOR POWER IF UNEXPECTED MOTION"));
-      test(F("1 LEFT FORWARD"), TEST_PWM, 0);
-      test(F("2 LEFT REVERSE"), -TEST_PWM, 0);
-      test(F("3 RIGHT FORWARD"), 0, TEST_PWM);
-      test(F("4 RIGHT REVERSE"), 0, -TEST_PWM);
-      test(F("5 BOTH FORWARD"), TEST_PWM, TEST_PWM);
-      test(F("6 BOTH REVERSE"), -TEST_PWM, -TEST_PWM);
-      brake();
-      Serial.println(F("COMPLETE / ACTIVE BRAKE / SEND T TO REPEAT"));
+  // Always poll abort commands, even while a test is underway.
+  while (Serial.available()) {
+    char c=(char)Serial.read();
+    if(c=='X'||c=='x'||c=='S'||c=='s') { abortTest(); }
+    else if((c == 'T'||c == 't')&&!running) {
+      step=0; running=true; inGap=false;
+      startStep(step);
+    }
+  }
+  if(!running) return;
+  if(!inGap && millis()-phaseAt>=RUN_MS) {
+    brake(); inGap=true; phaseAt=millis();
+  } else if(inGap && millis()-phaseAt>=GAP_MS) {
+    ++step;
+    if(step>=6) {
+      abortTest();
+      Serial.println(F("COMPLETE: compare actual wheel direction with labels."));
+    } else {
+      inGap=false;
+      startStep(step);
     }
   }
 }

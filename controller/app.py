@@ -34,7 +34,7 @@ BLUE = '#447bd0'
 class BuggyApp:
     def __init__(self, root):
         self.root = root
-        root.title('Buggy Control Center v1.6.4 — Control Lab')
+        root.title('Buggy Control Center v1.6.5-safety — Control Lab (TEST)')
         root.geometry('1190x920')
         root.minsize(1050, 820)
         root.configure(bg=BG)
@@ -638,6 +638,9 @@ class BuggyApp:
             still_down = True  # cannot prove safe to re-arm
         if not still_down:
             self._blocked_drive_keys.clear()
+            if self.online and not self.demo:
+                # The real Arduino must receive a safe U + M,0,0 re-arm.
+                self.bridge.release_emergency()
         self.last_input_var.set('INPUT: RELEASE HELD KEYS before re-arming WASD' if still_down else
                                 'INPUT: READY — hold W/A/S/D or press 1–4')
         self.log('WASD activated.' if not still_down else 'WASD still blocked until held keys released.')
@@ -793,6 +796,9 @@ class BuggyApp:
             self.last_input_var.set(f'INPUT: {key} DOWN — holding moves buggy when connected')
         if key in self._blocked_drive_keys:
             return
+        if self.online and not self.demo and getattr(self.bridge, '_emergency_latched', False):
+            self.last_input_var.set('INPUT: E-STOP active — click ACTIVATE WASD to re-arm')
+            return
         self.brake_latched = False
         self.flight.record('INPUT', f'{key}_DOWN', source)
         self._pressed_sources[key].add(source)
@@ -940,6 +946,9 @@ class BuggyApp:
                 self.demo = False
                 self.online = True
                 self.brake_latched = True  # don't move simply because BLE connected
+                # Safe real-hardware defaults, without changing demo expectations.
+                self.precision_var.set(True)
+                self.set_gear(1)
                 self.bridge.set_brake()
                 self.last_feedback = None
                 self.last_feedback_at = 0.0
@@ -953,7 +962,9 @@ class BuggyApp:
                     self.diagnosis.set('link', 'PASS', 'BLE link connected')
                     self._start_firmware_probe()
                 else:
-                    self.root.after_idle(self.activate_keyboard)
+                    # Do not silently unlock a previous X emergency stop on reconnect.
+                    self.last_input_var.set('INPUT: connected and braked — click ACTIVATE WASD to arm')
+                    self.log('For safety, manually click ACTIVATE WASD to unlock E-STOP after connecting.')
             elif kind in ('disconnected', 'lost'):
                 if self.online and not self.demo:
                     self.emergency_stop(quiet=True)
@@ -1112,6 +1123,9 @@ class BuggyApp:
             sources.clear()
         self.pressed.clear()
         self.brake_latched = False
+        if self.online and not self.demo:
+            # Explicitly accepted route start, so send U + M,0,0 before drive.
+            self.bridge.release_emergency()
         self.running = True
         self.route_index = 0
         self.segment_started = time.monotonic()
@@ -1132,7 +1146,7 @@ class BuggyApp:
         self.brake_latched = True
         self.applied_left = 0.0
         self.applied_right = 0.0
-        self.bridge.set_brake()
+        self.bridge.latch_emergency()
         self.flight.record('SAFETY', 'EMERGENCY_BRAKE', 'Space / Stop / focus / diagnostic')
         self._display_manual_command()
         self.drive_state_var.set('ACTIVE SHORT BRAKE / LATCHED')

@@ -38,7 +38,7 @@ def test_virtual_link_model_contains_expected_watchdog_fail_safe():
 def test_arduino_suppresses_all_uart_transmission_during_motion():
     sketch = (Path(__file__).resolve().parents[1] / 'arduino/BuggyController/BuggyController.ino').read_text()
     assert 'TELEMETRY_WHILE_MOVING = false' in sketch
-    assert '(currentLeft == 0 && currentRight == 0)' in sketch
+    assert '(currentLeft == 0 && currentRight == 0 && !reversalPending)' in sketch
     assert 'watchdogLockout = true' in sketch
 
 

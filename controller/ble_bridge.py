@@ -21,8 +21,12 @@ except ImportError as exc:
 
 # A blocked Windows BLE write must not stall the entire control loop forever.
 GATT_WRITE_TIMEOUT_S = 0.85
-DRIVE_STREAM_INTERVAL_S = 0.12
-BRAKE_STREAM_INTERVAL_S = 0.30
+# Stay well inside the firmware's 1.2-second motor watchdog while reducing
+# needless Windows BLE traffic. Never slow active command refresh past 0.24s.
+DRIVE_STREAM_INTERVAL_S = 0.16
+BRAKE_STREAM_INTERVAL_S = 0.65
+CONGESTED_DRIVE_INTERVAL_S = 0.24
+SLOW_WRITE_THRESHOLD_S = 0.22
 
 
 class BLEBridge:
@@ -38,6 +42,8 @@ class BLEBridge:
         self._lock = threading.Lock()
         self._motor = (0, 0)
         self._brake = True  # fail-safe: link must start braking
+        self._emergency_latched = False
+        self._safety_epoch = 0  # New emergency overrides an in-flight arm.
         self._updated = time.monotonic()
         self._rx_partial = bytearray()
         self._tx_count = 0
@@ -45,6 +51,9 @@ class BLEBridge:
         self._write_lock = asyncio.Lock()
         self._probe_waiting = False
         self._closing = False
+        self._emergency_send_pending = False
+        self._last_write_seconds = 0.0
+        self._last_slow_warning_at = 0.0
 
     def _thread_main(self):
         asyncio.set_event_loop(self.loop)
@@ -64,6 +73,10 @@ class BLEBridge:
 
     def set_motor(self, left, right):
         with self._lock:
+            # The Arduino X latch requires an explicit U + zero frame rearm.
+            # Never enqueue movement while the software E-stop is latched.
+            if getattr(self, '_emergency_latched', False):
+                return
             self._motor = (int(max(-255, min(255, left))), int(max(-255, min(255, right))))
             self._brake = False
             self._updated = time.monotonic()
@@ -76,17 +89,101 @@ class BLEBridge:
             self._updated = time.monotonic()
         # Push a brake immediately rather than waiting for periodic streaming.
         # Stream rechecks the brake state before every write.
-        if not already_braking and self.client is not None and self.char is not None:
+        # Do not queue a write to a link already known to be disconnected.
+        client = self.client
+        if (not already_braking and client is not None
+                and client.is_connected and self.char is not None):
             self._schedule(self._urgent_brake())
 
-    async def _urgent_brake(self):
+    def latch_emergency(self):
+        """Latch Arduino emergency stop (v1.6.5+), with old K-brake fallback."""
+        self.set_brake()
+        with self._lock:
+            self._emergency_latched = True
+            self._safety_epoch += 1
+        client = self.client
+        if client is not None and client.is_connected and self.char is not None:
+            # Multiple Stop/Escape/focus events must not flood the HM-10 with
+            # redundant two-packet emergency sequences.
+            with self._lock:
+                if self._emergency_send_pending:
+                    return
+                self._emergency_send_pending = True
+            self._schedule(self._send_emergency_latch())
+
+    async def _send_emergency_latch(self):
+        try:
+            client = self.client
+            if client is None or not client.is_connected or not self.char:
+                return
+            async with self._write_lock:
+                with self._lock:
+                    if not self._emergency_latched:
+                        return  # An older queued X must not override a new arm.
+                # K works on v1.6.4; X adds a persistent stop on v1.6.5.
+                await asyncio.wait_for(
+                    client.write_gatt_char(self.char, b'K\n', response=self.write_response),
+                    timeout=GATT_WRITE_TIMEOUT_S)
+                await asyncio.wait_for(
+                    client.write_gatt_char(self.char, b'X\n', response=self.write_response),
+                    timeout=GATT_WRITE_TIMEOUT_S)
+            self.events.put(('info', 'Emergency stop latched; re-arm explicitly'))
+        except Exception as exc:
+            if self.client is not None and self.client.is_connected:
+                self.events.put(('error', f'Emergency stop write failed: {exc}; cut motor battery power'))
+        finally:
+            with self._lock:
+                self._emergency_send_pending = False
+
+    def release_emergency(self):
+        """Explicit manual arm: unlatch X and send a zero/brake frame first."""
         if self.client is not None and self.client.is_connected and self.char is not None:
-            try:
-                # _send rechecks the live state after acquiring the write lock.
-                # An old emergency task must not brake a later *new* key press.
-                await self._send(brake=True)
-            except Exception as exc:
-                self.events.put(('error', f'Immediate brake write failed: {exc}'))
+            with self._lock:
+                epoch = self._safety_epoch
+            self._schedule(self._release_emergency(epoch))
+
+    async def _release_emergency(self, epoch=None):
+        if not self.client or not self.client.is_connected or not self.char:
+            return
+        try:
+            if epoch is None:
+                epoch = getattr(self, '_safety_epoch', 0)
+            async with self._write_lock:
+                with self._lock:
+                    if epoch != getattr(self, '_safety_epoch', 0):
+                        return  # A newer emergency superseded this arm.
+                    self._motor = (0, 0)
+                    self._brake = True
+                    self._updated = time.monotonic()
+                await asyncio.wait_for(
+                    self.client.write_gatt_char(self.char, b'U\n', response=self.write_response),
+                    timeout=GATT_WRITE_TIMEOUT_S)
+                await asyncio.wait_for(
+                    self.client.write_gatt_char(self.char, b'M,0,0\n', response=self.write_response),
+                    timeout=GATT_WRITE_TIMEOUT_S)
+                with self._lock:
+                    if epoch == getattr(self, '_safety_epoch', 0):
+                        self._emergency_latched = False
+                        self.events.put(('info', 'Motor arm sequence sent; wheels remain braked until new input'))
+        except Exception as exc:
+            with self._lock:
+                self._emergency_latched = True
+                self._brake = True
+                self._motor = (0, 0)
+            self.events.put(('error', f'Cannot re-arm motors: {exc}'))
+
+    async def _urgent_brake(self):
+        # Queued brakes may race a genuine Bluetooth disconnect. The main
+        # disconnection handler and Arduino watchdog handle that case.
+        client = self.client
+        if client is None or not client.is_connected or self.char is None:
+            return
+        try:
+            await self._send(brake=True)
+        except Exception as exc:
+            if client is not self.client or not client.is_connected:
+                return
+            self.events.put(('error', f'Immediate brake write failed: {exc}'))
 
     def scan(self):
         if BLEAK_ERROR:
@@ -156,6 +253,12 @@ class BLEBridge:
             # brake before declaring the link ready or starting the stream.
             self.set_brake()
             await self._send(brake=True)
+            # A new connection must not clear a previous firmware E-stop.
+            # Latch until the user explicitly arms after verifying safety.
+            with self._lock:
+                self._emergency_latched = True
+                self._safety_epoch += 1
+            await self._send_emergency_latch()
             self.stream_task = asyncio.create_task(self._stream())
             self.events.put(('connected', device.name or device.address))
         except Exception as exc:
@@ -190,7 +293,14 @@ class BLEBridge:
                 self.events.put(('unknown_reply', message[:80]))
 
     def _on_disconnect(self, _client):
-        self.set_brake()
+        # Don't try to send a brake to the link that just disappeared.
+        # Fail closed locally; the Arduino's independent watchdog stops it.
+        with self._lock:
+            self._motor = (0, 0)
+            self._brake = True
+            self._emergency_latched = True
+            self._safety_epoch += 1
+            self._updated = time.monotonic()
         self.events.put(('lost', 'Bluetooth connection closed'))
 
     async def _send(self, left=0, right=0, brake=False):
@@ -221,6 +331,14 @@ class BLEBridge:
                 raise RuntimeError(
                     f'BLE GATT write stalled (> {GATT_WRITE_TIMEOUT_S:.2f}s). '
                     'Motor commands may be lost; stopping link.') from exc
+            write_seconds = time.monotonic() - t0
+            self._last_write_seconds = write_seconds
+            if (write_seconds >= SLOW_WRITE_THRESHOLD_S
+                    and time.monotonic() - self._last_slow_warning_at >= 5.0):
+                self._last_slow_warning_at = time.monotonic()
+                self.events.put(('info',
+                    f'BLE congested: latest write {write_seconds * 1000:.0f} ms; '
+                    'slowing motor-command refresh, watchdog remains enabled'))
             self.events.put(('tx_frame', {
                 'sent_at': time.monotonic(),
                 'frame': payload.decode('ascii').strip(),
@@ -241,7 +359,11 @@ class BLEBridge:
                 with self._lock:
                     moving = not self._brake and self._motor != (0, 0)
                 # Fewer idle writes, but refresh active motor commands often.
-                await asyncio.sleep(DRIVE_STREAM_INTERVAL_S if moving else BRAKE_STREAM_INTERVAL_S)
+                interval = (CONGESTED_DRIVE_INTERVAL_S
+                            if moving and self._last_write_seconds >= SLOW_WRITE_THRESHOLD_S
+                            else DRIVE_STREAM_INTERVAL_S if moving
+                            else BRAKE_STREAM_INTERVAL_S)
+                await asyncio.sleep(interval)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -270,7 +392,9 @@ class BLEBridge:
                 if not self.client or not self.client.is_connected:
                     raise RuntimeError('BLE link disappeared before handshake')
                 async with self._write_lock:
-                    await self.client.write_gatt_char(self.char, b'Q\n', response=self.write_response)
+                    await asyncio.wait_for(
+                        self.client.write_gatt_char(self.char, b'Q\n', response=self.write_response),
+                        timeout=GATT_WRITE_TIMEOUT_S)
                 self.events.put(('probe_sent', attempt + 1))
                 await asyncio.sleep(0.4)
         except Exception as exc:
