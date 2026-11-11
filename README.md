@@ -1,27 +1,37 @@
-# ilovecabbage 🥬 — Buggy Project
+# ilovecabbage 🥬 — Buggy Wheel-Control Safety
 
-This repository is the team's **single working copy** for the current available website and buggy source. It includes:
+This repository started with only a README. This branch adds actual Arduino and Windows controller source recovered or reconstructed during the **11 November 2026** wheel-control safety audit. The original Windows Control Center v1.6.4 ZIP is *not in this GitHub repository*, and its full historical GUI source has not been audited here.
 
-- **Website**: `index.html`, `styles.css`, `video.js`, all 14 cabbage photos, and the landscape team video in `assets/`.
-- **Windows Control Center**: editable Python GUI, BLE bridge, route planning, diagnostics, flight recorder and regression tests in `controller/`.
-- **Arduino Uno**: matching `BuggyController.ino` and independent `MotorTest.ino` inside `controller/arduino/` and convenient downloads under `downloads/`.
-- **Project reference**: the hardware brief in `hardware/`, with wiring guidance and original project documentation.
+## What's included
 
-## Quick start
+- **Arduino Uno firmware:** [BuggyController.ino](controller/arduino/BuggyController/BuggyController.ino), v1.6.5-safety. Retains signed \`M,left,right\\n\`, K stop, Q handshake \`H,13\`, watchdog, and active TB6612FNG braking. Adds independent USB/BLE parsers, two-channel direction-change interlock and optional latching X emergency stop/U unlock.
+- **Hardware calibration sketch:** [MotorTest.ino](controller/arduino/MotorTest/MotorTest.ino), with six separately labelled wheel tests and serial abort.
+- **Simple alternative Windows BLE controller:** [controller/app.py](controller/app.py) (Tkinter + bleak). This is not the unverified historical route-planning app.
+- **Regression tests:** Python motion mixer tests and native C++ firmware simulation, plus Arduino Uno build CI.
+- **Safety analysis and wiring:** [docs/WHEEL_SAFETY_AUDIT.md](docs/WHEEL_SAFETY_AUDIT.md).
 
-1. Open the hosted website: https://buggy-team-hub.vercel.app
-2. Download `downloads/Buggy_Control_Center_v1.6.4.zip`, extract it, and launch `demo.bat` to test without hardware; use `run.bat` for the real Windows controller.
-3. To update Arduino firmware, disconnect the motor battery before uploading `controller/arduino/BuggyController/BuggyController.ino` to an Arduino Uno via Arduino IDE.
-4. Test the right wheel and braking with the wheels lifted, the physical battery switch accessible, and the independent `MotorTest.ino` sketch when appropriate.
+## Getting started (wheels off the floor)
 
-**Hardware safety:** Previous tests found that the right wheel sometimes moved unexpectedly and ignored reverse/braking. Software feedback indicates commanded PWM, **not actual wheel rotation**. Do not perform unsupervised powered driving until both channels and physical emergency-stop behavior are verified.
+1. Read [the safety audit and six-step calibration procedure](docs/WHEEL_SAFETY_AUDIT.md).
+2. Turn OFF motor battery and upload \`controller/arduino/MotorTest/MotorTest.ino\` to an Arduino Uno. Lift wheels, switch power on, send \`T\` at 9600 baud, and verify **both directions on both motors**, particularly right reverse and braking. Turn off motor battery if any wheel behaves unpredictably.
+3. Only if all six tests pass: verify/update \`LEFT_MOTOR_POLARITY\` and \`RIGHT_MOTOR_POLARITY\` in the normal firmware, switch motor power OFF, then upload \`controller/arduino/BuggyController/BuggyController.ino\`.
+4. On Windows with Python installed, run \`controller\\install.bat\` once and \`controller\\run.bat\` to launch the minimal BLE controller. Scan for your HM-10 / HMSoft device, connect, then explicitly ARM before trying WASD or the on-screen direction controls.
+5. Start with wheels still lifted. Check forward, reverse, pivot turns, gentle arc turns, STOP, latched E-STOP, Bluetooth loss and actual wheel rotation before any floor test.
 
-## Release provenance
+**No physical driving is certified by software tests.** A faulty right TB6612FNG channel, bad motor wiring, unsuitable battery supply, absent common ground or wrong wheel polarity can make motion unreliable even when the code builds and simulation passes. Keep a physical motor-battery cut-off accessible.
 
-The most recent **complete source package available to verify and publish** here is **Buggy Control Center v1.6.4**. A completed scheduled development task reported a later **v1.6.14**, but the final source ZIP is *not accessible* from this repository-creation session. This repo does **not** claim to contain v1.6.14. Please replace the controller source and downloads with the newer release only after its actual files are recovered and verified; do not mix firmware and GUI versions.
+## Protocol
 
-Only the latest **available** release is tracked, not old release ZIPs. The website is static, so the repo root can be deployed directly to Vercel. The full website video is a regular MP4; no chunk-loading is needed.
+\`M,<left>,<right>\\n\` where each signed power is an integer from -255 to +255. Zero commands active short-brake. \`K\` brakes and requires a subsequent \`M,0,0\` before nonzero motion. \`X\` latches emergency stop; \`U\` unlocks that latch, and a zero frame is still required before driving. \`Q\` returns \`H,13\`. Legacy USB-only F/B/L/R commands remain for bench diagnosis. Do not send single-byte legacy motion over BLE.
 
-## Collaboration
+## Tests
 
-Make small commits for changes, document reproducible tests and record what happens on the physical buggy. To work locally, clone this repository; Python dependencies are listed in `controller/requirements.txt`. `controller/offline_tests.bat` runs software tests on Windows.
+\`\`\`shell
+python -m unittest discover -s tests -v
+g++ -std=c++17 -Wall -Wextra -Werror -Itests/arduino_stubs tests/firmware_harness.cpp -o /tmp/firmware-harness
+/tmp/firmware-harness
+\`\`\`
+
+GitHub Actions also compiles the sketches for \`arduino:avr:uno\`.
+
+Historical hosted website: https://buggy-team-hub.vercel.app . Its download ZIP and advanced Windows GUI are not included in this repository and should not be treated as reviewed by this PR.
