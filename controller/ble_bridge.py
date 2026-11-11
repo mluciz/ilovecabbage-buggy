@@ -39,6 +39,7 @@ class BLEBridge:
         self._motor = (0, 0)
         self._brake = True  # fail-safe: link must start braking
         self._emergency_latched = False
+        self._safety_epoch = 0  # New emergency overrides an in-flight arm.
         self._updated = time.monotonic()
         self._rx_partial = bytearray()
         self._tx_count = 0
@@ -89,6 +90,7 @@ class BLEBridge:
         self.set_brake()
         with self._lock:
             self._emergency_latched = True
+            self._safety_epoch += 1
         if self.client is not None and self.char is not None:
             self._schedule(self._send_emergency_latch())
 
@@ -97,6 +99,9 @@ class BLEBridge:
             return
         try:
             async with self._write_lock:
+                with self._lock:
+                    if not self._emergency_latched:
+                        return  # An older queued X must not override a new arm.
                 # Send ordinary K first for compatibility with v1.6.4.
                 await asyncio.wait_for(
                     self.client.write_gatt_char(self.char, b'K\n', response=self.write_response),
@@ -111,14 +116,20 @@ class BLEBridge:
     def release_emergency(self):
         """Explicit manual arm: unlatch X and send a zero/brake frame first."""
         if self.client is not None and self.client.is_connected and self.char is not None:
-            self._schedule(self._release_emergency())
+            with self._lock:
+                epoch = self._safety_epoch
+            self._schedule(self._release_emergency(epoch))
 
-    async def _release_emergency(self):
+    async def _release_emergency(self, epoch=None):
         if not self.client or not self.client.is_connected or not self.char:
             return
         try:
+            if epoch is None:
+                epoch = getattr(self, '_safety_epoch', 0)
             async with self._write_lock:
                 with self._lock:
+                    if epoch != getattr(self, '_safety_epoch', 0):
+                        return  # A newer emergency superseded this arm.
                     self._motor = (0, 0)
                     self._brake = True
                     self._updated = time.monotonic()
@@ -129,8 +140,9 @@ class BLEBridge:
                     self.client.write_gatt_char(self.char, b'M,0,0\n', response=self.write_response),
                     timeout=GATT_WRITE_TIMEOUT_S)
                 with self._lock:
-                    self._emergency_latched = False
-            self.events.put(('info', 'Motor arm sequence sent; wheels remain braked until new input'))
+                    if epoch == getattr(self, '_safety_epoch', 0):
+                        self._emergency_latched = False
+                        self.events.put(('info', 'Motor arm sequence sent; wheels remain braked until new input'))
         except Exception as exc:
             with self._lock:
                 self._emergency_latched = True
@@ -217,9 +229,10 @@ class BLEBridge:
             await self._send(brake=True)
             # A new connection must not clear a previous firmware E-stop.
             # Latch until the user explicitly arms after verifying safety.
-            await self._send_emergency_latch()
             with self._lock:
                 self._emergency_latched = True
+                self._safety_epoch += 1
+            await self._send_emergency_latch()
             self.stream_task = asyncio.create_task(self._stream())
             self.events.put(('connected', device.name or device.address))
         except Exception as exc:
