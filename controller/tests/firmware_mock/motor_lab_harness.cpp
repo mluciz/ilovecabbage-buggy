@@ -50,8 +50,8 @@ int main() {
     }
     assert(!running && step == 6);
     braked();
-    assert(Serial.output.find("LEFT reverse") != std::string::npos);
-    assert(Serial.output.find("RIGHT reverse") != std::string::npos);
+    assert(Serial.output.find("LEFT REVERSE") != std::string::npos);
+    assert(Serial.output.find("RIGHT REVERSE") != std::string::npos);
     assert(Serial.output.find("COMPLETE") != std::string::npos);
     std::cout << "motor lab: startup, independent direction channels, abort and six braking gaps PASS\n";
 }
