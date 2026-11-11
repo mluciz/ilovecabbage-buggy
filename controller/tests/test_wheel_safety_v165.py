@@ -109,3 +109,24 @@ def test_repeated_emergency_clicks_coalesce_and_preserve_watchdog_margin():
     assert bridge._emergency_send_pending is True
     for coro in pending:
         coro.close()
+
+
+def test_pivot_uses_full_selected_gear_to_overcome_static_friction():
+    """Pure A/D turns must not secretly derate power below W/S gear PWM."""
+    for pwm in (0, 80, 110, 150, 200, 240, 255):
+        for sensitivity in (0, 25, 50, 75, 100):
+            assert manual_wheels({'A'}, pwm, sensitivity) == (-pwm, pwm)
+            assert manual_wheels({'D'}, pwm, sensitivity) == (pwm, -pwm)
+            assert manual_wheels({'W'}, pwm, sensitivity) == (pwm, pwm)
+            assert manual_wheels({'S'}, pwm, sensitivity) == (-pwm, -pwm)
+
+
+def test_combined_steering_may_slow_inside_wheel_by_design():
+    # W+A / W+D are curves (inside wheel slower) rather than counter-rotating
+    # pivots. A stationary inside wheel at high sensitivity is not necessarily
+    # failed hardware.
+    for sensitivity in (0, 50, 100):
+        left, right = manual_wheels({'W', 'A'}, 200, sensitivity)
+        assert 0 <= left < right == 200
+        left, right = manual_wheels({'W', 'D'}, 200, sensitivity)
+        assert 0 <= right < left == 200
