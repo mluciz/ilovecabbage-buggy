@@ -21,8 +21,12 @@ except ImportError as exc:
 
 # A blocked Windows BLE write must not stall the entire control loop forever.
 GATT_WRITE_TIMEOUT_S = 0.85
-DRIVE_STREAM_INTERVAL_S = 0.12
-BRAKE_STREAM_INTERVAL_S = 0.30
+# Stay well inside the firmware's 1.2-second motor watchdog while reducing
+# needless Windows BLE traffic. Never slow active command refresh past 0.24s.
+DRIVE_STREAM_INTERVAL_S = 0.16
+BRAKE_STREAM_INTERVAL_S = 0.65
+CONGESTED_DRIVE_INTERVAL_S = 0.24
+SLOW_WRITE_THRESHOLD_S = 0.22
 
 
 class BLEBridge:
@@ -47,6 +51,9 @@ class BLEBridge:
         self._write_lock = asyncio.Lock()
         self._probe_waiting = False
         self._closing = False
+        self._emergency_send_pending = False
+        self._last_write_seconds = 0.0
+        self._last_slow_warning_at = 0.0
 
     def _thread_main(self):
         asyncio.set_event_loop(self.loop)
@@ -96,26 +103,37 @@ class BLEBridge:
             self._safety_epoch += 1
         client = self.client
         if client is not None and client.is_connected and self.char is not None:
+            # Multiple Stop/Escape/focus events must not flood the HM-10 with
+            # redundant two-packet emergency sequences.
+            with self._lock:
+                if self._emergency_send_pending:
+                    return
+                self._emergency_send_pending = True
             self._schedule(self._send_emergency_latch())
 
     async def _send_emergency_latch(self):
-        if not self.client or not self.client.is_connected or not self.char:
-            return
         try:
+            client = self.client
+            if client is None or not client.is_connected or not self.char:
+                return
             async with self._write_lock:
                 with self._lock:
                     if not self._emergency_latched:
                         return  # An older queued X must not override a new arm.
-                # Send ordinary K first for compatibility with v1.6.4.
+                # K works on v1.6.4; X adds a persistent stop on v1.6.5.
                 await asyncio.wait_for(
-                    self.client.write_gatt_char(self.char, b'K\n', response=self.write_response),
+                    client.write_gatt_char(self.char, b'K\n', response=self.write_response),
                     timeout=GATT_WRITE_TIMEOUT_S)
                 await asyncio.wait_for(
-                    self.client.write_gatt_char(self.char, b'X\n', response=self.write_response),
+                    client.write_gatt_char(self.char, b'X\n', response=self.write_response),
                     timeout=GATT_WRITE_TIMEOUT_S)
             self.events.put(('info', 'Emergency stop latched; re-arm explicitly'))
         except Exception as exc:
-            self.events.put(('error', f'Emergency stop write failed: {exc}; cut motor battery power'))
+            if self.client is not None and self.client.is_connected:
+                self.events.put(('error', f'Emergency stop write failed: {exc}; cut motor battery power'))
+        finally:
+            with self._lock:
+                self._emergency_send_pending = False
 
     def release_emergency(self):
         """Explicit manual arm: unlatch X and send a zero/brake frame first."""
@@ -313,6 +331,14 @@ class BLEBridge:
                 raise RuntimeError(
                     f'BLE GATT write stalled (> {GATT_WRITE_TIMEOUT_S:.2f}s). '
                     'Motor commands may be lost; stopping link.') from exc
+            write_seconds = time.monotonic() - t0
+            self._last_write_seconds = write_seconds
+            if (write_seconds >= SLOW_WRITE_THRESHOLD_S
+                    and time.monotonic() - self._last_slow_warning_at >= 5.0):
+                self._last_slow_warning_at = time.monotonic()
+                self.events.put(('info',
+                    f'BLE congested: latest write {write_seconds * 1000:.0f} ms; '
+                    'slowing motor-command refresh, watchdog remains enabled'))
             self.events.put(('tx_frame', {
                 'sent_at': time.monotonic(),
                 'frame': payload.decode('ascii').strip(),
@@ -333,7 +359,11 @@ class BLEBridge:
                 with self._lock:
                     moving = not self._brake and self._motor != (0, 0)
                 # Fewer idle writes, but refresh active motor commands often.
-                await asyncio.sleep(DRIVE_STREAM_INTERVAL_S if moving else BRAKE_STREAM_INTERVAL_S)
+                interval = (CONGESTED_DRIVE_INTERVAL_S
+                            if moving and self._last_write_seconds >= SLOW_WRITE_THRESHOLD_S
+                            else DRIVE_STREAM_INTERVAL_S if moving
+                            else BRAKE_STREAM_INTERVAL_S)
+                await asyncio.sleep(interval)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
