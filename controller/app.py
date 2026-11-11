@@ -946,6 +946,9 @@ class BuggyApp:
                 self.demo = False
                 self.online = True
                 self.brake_latched = True  # don't move simply because BLE connected
+                # Safe real-hardware defaults, without changing demo expectations.
+                self.precision_var.set(True)
+                self.set_gear(1)
                 self.bridge.set_brake()
                 self.last_feedback = None
                 self.last_feedback_at = 0.0
