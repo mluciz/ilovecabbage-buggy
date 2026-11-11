@@ -33,12 +33,12 @@ void wheels(int left,int right) {
 }
 void startStep(byte n) {
   switch(n) {
-    case 0: Serial.println(F("1/6 LEFT forward"));  wheels(TEST_PWM,0); break;
-    case 1: Serial.println(F("2/6 LEFT reverse"));  wheels(-TEST_PWM,0); break;
-    case 2: Serial.println(F("3/6 RIGHT forward")); wheels(0,TEST_PWM); break;
-    case 3: Serial.println(F("4/6 RIGHT reverse")); wheels(0,-TEST_PWM); break;
-    case 4: Serial.println(F("5/6 BOTH forward"));  wheels(TEST_PWM,TEST_PWM); break;
-    case 5: Serial.println(F("6/6 BOTH reverse"));  wheels(-TEST_PWM,-TEST_PWM); break;
+    case 0: Serial.println(F("1/6 LEFT FORWARD"));  wheels(TEST_PWM,0); break;
+    case 1: Serial.println(F("2/6 LEFT REVERSE"));  wheels(-TEST_PWM,0); break;
+    case 2: Serial.println(F("3/6 RIGHT FORWARD")); wheels(0,TEST_PWM); break;
+    case 3: Serial.println(F("4/6 RIGHT REVERSE")); wheels(0,-TEST_PWM); break;
+    case 4: Serial.println(F("5/6 BOTH FORWARD"));  wheels(TEST_PWM,TEST_PWM); break;
+    case 5: Serial.println(F("6/6 BOTH REVERSE"));  wheels(-TEST_PWM,-TEST_PWM); break;
   }
   phaseAt=millis();
 }
@@ -61,7 +61,7 @@ void loop() {
   while (Serial.available()) {
     char c=(char)Serial.read();
     if(c=='X'||c=='x'||c=='S'||c=='s') { abortTest(); }
-    else if((c=='T'||c=='t')&&!running) {
+    else if((c == 'T'||c == 't')&&!running) {
       step=0; running=true; inGap=false;
       startStep(step);
     }
