@@ -1,9 +1,10 @@
 #include <SoftwareSerial.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /*
-  BUGGY CONTROL CENTER v1.6.4 (based on v1.6.3)
+  BUGGY CONTROL CENTER v1.6.5-safety (derived from verified v1.6.4)
   Arduino Uno + TB6612FNG + HM-10 at 9600 baud
 
   Pins are unchanged from v1.1:
@@ -12,8 +13,9 @@
 
   Incoming BLE/USB commands (only framed M packets drive via BLE):
     M,<left>,<right>\n   Signed PWM (-255..255), 0,0 = ACTIVE BRAKE
-    K\n                 Both wheels ACTIVE SHORT BRAKE (TB6612FNG IN1=IN2=HIGH)
-    Q\n                 Safe firmware handshake: replies H,13\n
+    K\n                 Brake / clear watchdog lockout (existing app behaviour)
+    Q\n                 Safe firmware handshake: replies H,13\n    X\n                 Latching emergency stop (needs U after physical inspection)
+    U\n                 Release X latch only; still needs M,0,0 to drive
     Legacy F B L R S 1 2 3 4 also supported for basic debugging
 
   Outgoing HM-10 UART telemetry at most every 1000 ms when RX idle:
@@ -50,6 +52,9 @@ const bool TELEMETRY_WHILE_MOVING = false;
 // finish first and leave an idle gap before transmitting optional telemetry.
 const unsigned long RX_QUIET_MS = 45;
 const unsigned long PACKET_TIMEOUT_MS = 180;
+// Brake both channels briefly before reversing either wheel. Non-blocking:
+// incoming stop commands remain responsive during the pause.
+const unsigned long REVERSAL_BRAKE_MS = 70;
 unsigned long lastRxByteAt = 0;
 unsigned long lastMotionCommand = 0;
 unsigned long lastTelemetry = 0;
@@ -64,59 +69,87 @@ char driveState = 'C';
 // After a watchdog stop, stale/replayed drive packets must not restart motors.
 bool watchdogLockout = false;
 
-char packet[24];
-byte packetPos = 0;
-bool receivingPacket = false;
+struct FrameBuffer {
+  char packet[24];
+  byte pos;
+  bool receiving;
+  unsigned long lastByteAt;
+};
+FrameBuffer bleFrame = {};
+FrameBuffer usbFrame = {};
 bool handshakePending = false;
-
-void motorDrive(byte pwm, byte in1, byte in2, int signedPower) {
-  signedPower = constrain(signedPower, -255, 255);
-  analogWrite(pwm, 0);
-  if (signedPower == 0) {
-    // Hold an idle wheel in short brake, even when the other wheel is driven.
-    // Otherwise a zero-power wheel COASTS and the buggy keeps drifting/turning.
-    digitalWrite(in1, HIGH);
-    digitalWrite(in2, HIGH);
-    analogWrite(pwm, 255);
-    return;
-  }
-  digitalWrite(in1, signedPower > 0 ? HIGH : LOW);
-  digitalWrite(in2, signedPower > 0 ? LOW : HIGH);
-  analogWrite(pwm, abs(signedPower));
-}
+bool eStopLatched = false;
+bool reversalPending = false;
+int pendingLeft = 0;
+int pendingRight = 0;
+unsigned long reversalStartedAt = 0;
 
 void activeBrake(char state = 'B');
 
+// Pause BOTH channels before applying either direction. This prevents the
+// left and right motors from briefly driving conflicting command generations.
+void applyWheels(int left, int right) {
+  const int l = constrain(left * LEFT_MOTOR_POLARITY, -255, 255);
+  const int r = constrain(right * RIGHT_MOTOR_POLARITY, -255, 255);
+  analogWrite(PWMA, 0);
+  analogWrite(PWMB, 0);
+  digitalWrite(AIN1, l >= 0 ? HIGH : LOW);
+  digitalWrite(AIN2, l > 0 ? LOW : HIGH);
+  digitalWrite(BIN1, r >= 0 ? HIGH : LOW);
+  digitalWrite(BIN2, r > 0 ? LOW : HIGH);
+  // A stationary wheel must short-brake, not coast.
+  analogWrite(PWMA, l == 0 ? 255 : abs(l));
+  analogWrite(PWMB, r == 0 ? 255 : abs(r));
+  currentLeft = left;
+  currentRight = right;
+  driveState = (left || right) ? 'D' : 'B';
+}
+
+bool reverses(int now, int next) {
+  return (now > 0 && next < 0) || (now < 0 && next > 0);
+}
+
 void commandWheels(int left, int right) {
-  // Zero drive means BRAKE rather than coast: a held key may be lost by BLE.
+  left = constrain(left, -255, 255);
+  right = constrain(right, -255, 255);
   if (left == 0 && right == 0) {
     activeBrake();
     return;
   }
-  currentLeft = constrain(left, -255, 255);
-  currentRight = constrain(right, -255, 255);
-  motorDrive(PWMA, AIN1, AIN2, currentLeft * LEFT_MOTOR_POLARITY);
-  motorDrive(PWMB, BIN1, BIN2, currentRight * RIGHT_MOTOR_POLARITY);
-  driveState = (currentLeft || currentRight) ? 'D' : 'C';
+  if (eStopLatched || watchdogLockout) return;
   lastMotionCommand = millis();
+  if (reversalPending) {
+    // A stop arriving during deadtime cancels this pending request.
+    // Repeated commands do NOT restart the delay forever.
+    pendingLeft = left;
+    pendingRight = right;
+    return;
+  }
+  if (reverses(currentLeft, left) || reverses(currentRight, right)) {
+    activeBrake();
+    pendingLeft = left;
+    pendingRight = right;
+    reversalPending = true;
+    reversalStartedAt = millis();
+    return;
+  }
+  applyWheels(left, right);
 }
 
 void activeBrake(char state) {
-  // Toshiba TB6612FNG datasheet: IN1=IN2=HIGH, STBY=HIGH => short brake.
-  // This stops the wheels more decisively than simply removing drive.
-  currentLeft = 0;
-  currentRight = 0;
-  digitalWrite(STBY, HIGH);
-  // Set both direction pairs to short-brake BEFORE re-enabling PWM.
-  // Otherwise there can be a momentary full-power drive pulse.
+  reversalPending = false;
+  currentLeft = currentRight = 0;
+  // Remove PWM before switching both direction pairs to SHORT BRAKE.
+  analogWrite(PWMA, 0);
+  analogWrite(PWMB, 0);
   digitalWrite(AIN1, HIGH);
   digitalWrite(AIN2, HIGH);
   digitalWrite(BIN1, HIGH);
   digitalWrite(BIN2, HIGH);
   analogWrite(PWMA, 255);
   analogWrite(PWMB, 255);
+  digitalWrite(STBY, HIGH);
   driveState = state;
-  lastMotionCommand = millis();
 }
 
 void legacyMotion() {
@@ -158,55 +191,67 @@ void processPacket(char* line) {
   int left = atoi(leftText);
   int right = atoi(rightText);
   if (left < -255 || left > 255 || right < -255 || right > 255) return;
-  // A stale held-key stream must never re-start motors after a watchdog stop.
-  // A deliberate stop (K or M,0,0) clears lockout; next new key press may drive.
-  if (watchdogLockout && (left != 0 || right != 0)) return;
-  if (left == 0 && right == 0) watchdogLockout = false;
-  commandWheels(left, right);
-  ++acceptedDrivePackets;
+  if (left == 0 && right == 0) {
+    // A deliberate zero frame clears the ordinary watchdog/brake lockout.
+    // It never clears the latched emergency stop.
+    watchdogLockout = false;
+  }
+  if (!eStopLatched && !watchdogLockout) {
+    commandWheels(left, right);
+    ++acceptedDrivePackets;
+  }
 }
 
-void receiveByte(char value, bool usbDebug) {
-  // Safety priority: K can never be part of a valid numeric M packet.
-  // Accept it even if a previous M frame lost its newline or was truncated.
+void receiveByte(char value, FrameBuffer &frame, bool usbDebug) {
+  frame.lastByteAt = millis();
+  // Emergency commands preempt even damaged or incomplete motor frames.
+  if (value == 'X') {
+    frame.pos = 0; frame.receiving = false;
+    eStopLatched = true;
+    watchdogLockout = true;
+    activeBrake('E');
+    return;
+  }
   if (value == 'K') {
-    packetPos = 0;
-    receivingPacket = false;
+    frame.pos = 0; frame.receiving = false;
+    // Preserve existing v1.6.4 app compatibility: K is an ordinary
+    // active brake / watchdog-rearm command. Only X is a latched E-stop.
     watchdogLockout = false;
     activeBrake();
     return;
   }
-  // If a packet is interrupted, a fresh M can resync without requiring reset.
-  // M is not valid inside a signed numeric motor payload.
-  if (receivingPacket && value == 'M') {
-    packet[0] = 'M';
-    packetPos = 1;
+  if (frame.receiving && value == 'M') {
+    // Framing recovery for a missing newline; M is never a numeric field.
+    frame.packet[0] = 'M';
+    frame.pos = 1;
     return;
   }
-  if (receivingPacket) {
+  if (frame.receiving) {
     if (value == '\n' || value == '\r') {
-      packet[packetPos] = '\0';
-      processPacket(packet);
-      packetPos = 0;
-      receivingPacket = false;
-    } else if (packetPos < sizeof(packet) - 1) {
-      packet[packetPos++] = value;
+      frame.packet[frame.pos] = '\0';
+      processPacket(frame.packet);
+      frame.pos = 0;
+      frame.receiving = false;
+    } else if (frame.pos < sizeof(frame.packet) - 1) {
+      frame.packet[frame.pos++] = value;
     } else {
-      // Drop malformed long packets rather than executing truncated commands.
-      packetPos = 0;
-      receivingPacket = false;
+      frame.pos = 0;
+      frame.receiving = false;
     }
   } else if (value == 'M') {
-    receivingPacket = true;
-    packet[0] = 'M';
-    packetPos = 1;
+    frame.receiving = true;
+    frame.packet[0] = 'M';
+    frame.pos = 1;
+  } else if (value == 'U') {
+    // Never allow a raw U to resume motors: a zero frame is still required.
+    eStopLatched = false;
+    watchdogLockout = true;
+    activeBrake();
   } else if (value == 'Q') {
-    // Never send SoftwareSerial output while a motor packet is arriving.
     handshakePending = true;
     Serial.println(F("H,13"));
-  } else if (usbDebug) {
-    // Legacy single-byte drive commands are intentionally USB-only.
-    // Noise/corrupt BLE bytes must never start the motor.
+  } else if (usbDebug && !eStopLatched) {
+    // Legacy drive bytes remain local USB only.
     legacyByte(value);
   }
 }
@@ -246,41 +291,44 @@ void setup() {
   Serial.begin(9600);
   BT.begin(9600);
   digitalWrite(STBY, HIGH);
-  Serial.println(F("BUGGY v1.6.4 READY / M,left,right / K brake"));
+  Serial.println(F("BUGGY v1.6.5-safety READY / M,left,right / K brake / X latch"));
 }
 
 void loop() {
-  // Consume incoming motor commands before doing any outgoing UART work.
-  // Update lastRxByteAt for every byte (including packet fragments).
-  while (BT.available() > 0) {
-    char incoming = (char)BT.read();
-    lastRxByteAt = millis();
-    receiveByte(incoming, false);
-  }
-  while (Serial.available() > 0) receiveByte((char)Serial.read(), true);
+  while (BT.available() > 0) receiveByte((char)BT.read(), bleFrame, false);
+  while (Serial.available() > 0) receiveByte((char)Serial.read(), usbFrame, true);
 
-  if (receivingPacket && millis() - lastRxByteAt > PACKET_TIMEOUT_MS) {
-    receivingPacket = false;
-    packetPos = 0;
+  if (bleFrame.receiving &&
+      millis() - bleFrame.lastByteAt > PACKET_TIMEOUT_MS) {
+    bleFrame.receiving = false; bleFrame.pos = 0;
+  }
+  if (usbFrame.receiving &&
+      millis() - usbFrame.lastByteAt > PACKET_TIMEOUT_MS) {
+    usbFrame.receiving = false; usbFrame.pos = 0;
   }
 
-  if ((currentLeft != 0 || currentRight != 0) &&
-      (millis() - lastMotionCommand > WATCHDOG_MS)) {
-    activeBrake('W');  // Active brake if BLE commands stop unexpectedly.
-    watchdogLockout = true;  // require a fresh release before more motion
+  if ((currentLeft || currentRight || reversalPending) &&
+      millis() - lastMotionCommand > WATCHDOG_MS) {
+    activeBrake('W');
+    watchdogLockout = true;
     Serial.println(F("WATCHDOG ACTIVE BRAKE"));
   }
 
-  // SoftwareSerial cannot receive while transmitting. A deferred handshake
-  // goes ahead of periodic telemetry but only after a quiet UART gap.
-  if (!receivingPacket && BT.available() == 0 &&
+  if (reversalPending && !eStopLatched && !watchdogLockout &&
+      millis() - reversalStartedAt >= REVERSAL_BRAKE_MS) {
+    reversalPending = false;
+    applyWheels(pendingLeft, pendingRight);
+  }
+
+  // SoftwareSerial TX can drop incoming bytes; only report while braked,
+  // after the receive buffer has been quiet for a generous gap.
+  if (!bleFrame.receiving && BT.available() == 0 &&
       (TELEMETRY_WHILE_MOVING || (currentLeft == 0 && currentRight == 0)) &&
-      millis() - lastRxByteAt >= RX_QUIET_MS) {
+      millis() - bleFrame.lastByteAt >= RX_QUIET_MS) {
     if (handshakePending) {
       handshakePending = false;
       BT.println(F("H,13"));
-    } else if (millis() - lastTelemetry >= TELEMETRY_MS &&
-               (TELEMETRY_WHILE_MOVING || (currentLeft == 0 && currentRight == 0))) {
+    } else if (millis() - lastTelemetry >= TELEMETRY_MS) {
       lastTelemetry = millis();
       sendTelemetry();
     }
