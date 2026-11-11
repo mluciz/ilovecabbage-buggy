@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8f1">
+  <meta name="description" content="ilovecabbage team: a collection of cabbage photos, our team video, and Buggy Control Center downloads.">
+  <title>ilovecabbage — Buggy Team</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./video.js" defer></script>
+</head>
+<body id="top">
+  <header class="site-header">
+    <nav class="shell navigation" aria-label="Main navigation">
+      <a class="brand" href="#top">ilovecabbage<span>.</span></a>
+      <a class="nav-downloads" href="#downloads">project downloads <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="feature shell" aria-label="Team video">
+      <div class="kicker"><span class="mark"></span> A LITTLE SOMETHING FROM OUR TEAM <span class="feature-index">01 / PLAY</span></div>
+      <div class="video-shell">
+        <video id="team-video" class="feature-video" controls autoplay muted loop playsinline preload="metadata" poster="./assets/video-poster.jpg" aria-label="ilovecabbage team feature video, rotated to landscape">
+          Your browser doesn't support HTML5 video.
+        </video>
+      </div>
+      <div class="hero-title">
+        <span class="eyebrow">THE CABBAGE CREW</span>
+        <h1>ilovecabbages<span class="dot">.</span></h1>
+        <p>one team. many cabbages. one buggy.</p>
+      </div>
+    </section>
+
+    <section class="gallery-section shell" aria-labelledby="gallery-title">
+      <div class="section-heading"><div><span class="eyebrow">02 / THE COLLECTION</span><h2 id="gallery-title">all about cabbage.</h2></div><span class="count">14 pictures, zero explanations</span></div>
+      <div class="cabbage-gallery">
+        <figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560163.jpg" alt="A whole green cabbage on a white background"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560127_sp0_b0.jpg" alt="Illustrated character with a large cabbage outfit"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560153_sp0_b0.jpg" alt="Person wearing a costume made from cabbage leaves"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560171.png" alt="A colourful pile of cabbage heads"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560126.jpg" alt="Cat in sunglasses wearing a cabbage-leaf hat"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560154.jpg" alt="Person wearing a cabbage-leaf mask"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560131.jpg" alt="Large cabbage being held in front of a seated person"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560122.jpg" alt="Small dog dressed as a cabbage"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560141_c0.jpg" alt="Smiling green cabbage face"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560162_sp0_b0.jpg" alt="A pile of many pale green cabbages"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560129_sp0_b0.jpg" alt="Cat under an oversized napa cabbage hat"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560135.jpg" alt="Person holding an unusually large cabbage"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560121.jpg" alt="Person with a green cabbage-leaf mask"></figure>
+<figure class="cabbage-tile"><img loading="lazy" decoding="async" src="./assets/cabbage/1020065385344560119.jpg" alt="Funny face covered with pale cabbage leaves"></figure>
+      </div>
+    </section>
+
+    <section class="downloads-section" id="downloads" aria-labelledby="downloads-title">
+      <div class="shell downloads-wrap">
+        <div class="section-heading"><div><span class="eyebrow">03 / GET THE CODE</span><h2 id="downloads-title">build the buggy.</h2></div><span class="count">three files. everything you need.</span></div>
+        <div class="download-list">
+          <a class="download-item" href="./downloads/Buggy_Control_Center_v1.6.4.zip" download>
+            <span class="file-icon" aria-hidden="true">01</span><span class="download-info"><strong>Windows Control Center</strong><small>Full editable desktop application · Python · ZIP · v1.6.4</small></span><span class="download-action">Download <span aria-hidden="true">↓</span></span>
+          </a>
+          <a class="download-item" href="./downloads/BuggyController.ino" download>
+            <span class="file-icon" aria-hidden="true">02</span><span class="download-info"><strong>Arduino firmware</strong><small>BuggyController.ino · Matching Uno sketch · v1.6.4</small></span><span class="download-action">Download <span aria-hidden="true">↓</span></span>
+          </a>
+          <a class="download-item" href="./downloads/MotorTest.ino" download>
+            <span class="file-icon" aria-hidden="true">03</span><span class="download-info"><strong>Motor test sketch</strong><small>MotorTest.ino · Separate left/right wheel diagnostic</small></span><span class="download-action">Download <span aria-hidden="true">↓</span></span>
+          </a>
+        </div>
+        <p class="setup-note">On Windows, extract the ZIP and open <code>run.bat</code>. Upload the Arduino sketch with the motor battery disconnected. Test with wheels raised; the right-wheel/braking issue has not been physically cleared. The downloadable version is v1.6.4, not the later reported v1.6.14.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer shell"><span>© ilovecabbage</span><span>made for the team, by the team <span aria-hidden="true">🥬</span></span><a href="#top">back to top ↑</a></footer>
+</body>
+</html>

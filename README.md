@@ -1,27 +1,32 @@
-# ilovecabbage 🥬 — Buggy Project
+# ilovecabbage 🥬 — Buggy project
 
-This repository is the team's **single working copy** for the current available website and buggy source. It includes:
+This is our shared repo for the **ilovecabbage team website**, downloadable buggy controller, Arduino firmware, and hardware reference documentation. Only one complete controller release is included, not the old version archives.
 
-- **Website**: `index.html`, `styles.css`, `video.js`, all 14 cabbage photos, and the landscape team video in `assets/`.
-- **Windows Control Center**: editable Python GUI, BLE bridge, route planning, diagnostics, flight recorder and regression tests in `controller/`.
-- **Arduino Uno**: matching `BuggyController.ino` and independent `MotorTest.ino` inside `controller/arduino/` and convenient downloads under `downloads/`.
-- **Project reference**: the hardware brief in `hardware/`, with wiring guidance and original project documentation.
+## Repository layout
+
+- `index.html`, `styles.css`, `video.js`: the online cabbage-themed download website.
+- `assets/`: **all 14** cabbage images from the shared Drive folder, all eight byte-for-byte segments of the physically rotated landscape video (with audio), and the video preview image.
+- `downloads/`: one complete Windows Control Center ZIP and two Arduino sketches for direct downloading from the website.
+- `controller/`: **editable** Python GUI, Bluetooth bridge, diagnostics, automatic route planner, Arduino firmware, offline tests, and latest included changelog.
+- `hardware/`: original buggy project reference PDF.
 
 ## Quick start
 
-1. Open the hosted website: https://buggy-team-hub.vercel.app
-2. Download `downloads/Buggy_Control_Center_v1.6.4.zip`, extract it, and launch `demo.bat` to test without hardware; use `run.bat` for the real Windows controller.
-3. To update Arduino firmware, disconnect the motor battery before uploading `controller/arduino/BuggyController/BuggyController.ino` to an Arduino Uno via Arduino IDE.
-4. Test the right wheel and braking with the wheels lifted, the physical battery switch accessible, and the independent `MotorTest.ino` sketch when appropriate.
+1. **Website:** Open `index.html` locally or deploy this repository root as a static website. The currently hosted public version is https://buggy-team-hub.vercel.app.
+2. **Windows:** Download/extract `downloads/Buggy_Control_Center_v1.6.4.zip`, install Python dependencies when needed, and launch `demo.bat` for offline simulation or `run.bat` to operate the buggy. Alternatively work directly with the Python files in `controller/`.
+3. **Arduino:** Disconnect motor battery before uploading `controller/arduino/BuggyController/BuggyController.ino` via Arduino IDE (Arduino Uno). Use `controller/arduino/MotorTest/MotorTest.ino` for a separately triggered left/right motor diagnostic. Re-upload the normal sketch after testing.
+4. **Tests:** `controller/offline_tests.bat` on Windows, or `python -m pytest controller/tests` where the required packages and display environment are available.
 
-**Hardware safety:** Previous tests found that the right wheel sometimes moved unexpectedly and ignored reverse/braking. Software feedback indicates commanded PWM, **not actual wheel rotation**. Do not perform unsupervised powered driving until both channels and physical emergency-stop behavior are verified.
+## Known hardware safety issue
 
-## Release provenance
+The right wheel has previously rotated unexpectedly, responded poorly to reverse, and failed to brake as commanded. **No hardware correction is confirmed.** Do not drive unattended or on the floor until hardware is checked; test with both wheels raised and the motor battery's physical disconnect immediately accessible. GUI motor telemetry indicates *commanded PWM*, not measured actual wheel motion. Keep motor power disconnected during Arduino uploads. Verify STBY pulldown, ground, driver B-channel, and motor wiring independently.
 
-The most recent **complete source package available to verify and publish** here is **Buggy Control Center v1.6.4**. A completed scheduled development task reported a later **v1.6.14**, but the final source ZIP is *not accessible* from this repository-creation session. This repo does **not** claim to contain v1.6.14. Please replace the controller source and downloads with the newer release only after its actual files are recovered and verified; do not mix firmware and GUI versions.
+## Release status
 
-Only the latest **available** release is tracked, not old release ZIPs. The website is static, so the repo root can be deployed directly to Vercel. The full website video is a regular MP4; no chunk-loading is needed.
+The most recent **complete source package actually available and verified in this workspace** is **v1.6.4**. A separate scheduled development task reported **v1.6.14**, but its complete source files were not recoverable in this session. **This repository does not claim to contain v1.6.14.** Do not mix the later-reported version's firmware with these files without verifying their compatibility.
 
-## Collaboration
+Only the latest *available* controller build is tracked here, as requested. The hosted video is stored in eight byte-for-byte MP4 segments because a single 5 MB GitHub blob upload exceeded the connector limit. The website loads and joins these segments in `video.js`. To reconstruct the original standalone MP4, run `python tools/reassemble_video.py`; no video or audio bytes were changed.
 
-Make small commits for changes, document reproducible tests and record what happens on the physical buggy. To work locally, clone this repository; Python dependencies are listed in `controller/requirements.txt`. `controller/offline_tests.bat` runs software tests on Windows.
+## Collaborating
+
+Clone the repository, create topic branches for changes, and include test evidence with commits or pull requests. Document physical motor-channel results separately from simulated testing.

@@ -1,0 +1,13 @@
+# Local Python state and development artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
