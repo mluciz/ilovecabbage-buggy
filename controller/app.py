@@ -34,7 +34,7 @@ BLUE = '#447bd0'
 class BuggyApp:
     def __init__(self, root):
         self.root = root
-        root.title('Buggy Control Center v1.6.4 — Control Lab')
+        root.title('Buggy Control Center v1.6.5-safety — Control Lab (TEST)')
         root.geometry('1190x920')
         root.minsize(1050, 820)
         root.configure(bg=BG)
