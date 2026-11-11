@@ -13,14 +13,15 @@ class MotorControlTests(unittest.TestCase):
         self.assertEqual(manual_wheels({'S'}, 150, 90), (-150, -150))
         self.assertEqual(manual_wheels({'W', 'S'}, 150, 40), (0, 0))
 
-    def test_steer_sensitivity_changes_inside_wheel_and_pivot(self):
+    def test_steer_sensitivity_changes_curve_not_pivot_power(self):
         gentle = manual_wheels({'W', 'D'}, 150, 0)
         sharp = manual_wheels({'W', 'D'}, 150, 100)
         self.assertEqual(gentle[0], sharp[0])
         self.assertGreater(gentle[1], sharp[1])
         gentle_pivot = manual_wheels({'A'}, 150, 0)
         sharp_pivot = manual_wheels({'A'}, 150, 100)
-        self.assertLess(abs(gentle_pivot[0]), abs(sharp_pivot[0]))
+        self.assertEqual(gentle_pivot, (-150, 150))
+        self.assertEqual(sharp_pivot, (-150, 150))
 
     def test_reverse_steer_and_clamping(self):
         self.assertEqual(manual_wheels({'S', 'A'}, 150, 50)[1], -150)
