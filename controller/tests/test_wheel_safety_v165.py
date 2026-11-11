@@ -70,3 +70,42 @@ def test_ble_emergency_stop_needs_explicit_rearm():
         assert bridge.client.sent[-1] == b'M,150,-150\n'
 
     asyncio.run(run())
+
+
+def test_repeated_emergency_clicks_coalesce_and_preserve_watchdog_margin():
+    import ble_bridge
+
+    assert ble_bridge.DRIVE_STREAM_INTERVAL_S < 0.30
+    assert ble_bridge.CONGESTED_DRIVE_INTERVAL_S < 0.30
+    assert ble_bridge.BRAKE_STREAM_INTERVAL_S < 1.20
+    assert ble_bridge.GATT_WRITE_TIMEOUT_S < 1.20
+
+    class FakeClient:
+        is_connected = True
+
+    bridge = object.__new__(BLEBridge)
+    bridge.client = FakeClient()
+    bridge.char = 'FFE1'
+    bridge._lock = threading.Lock()
+    bridge._motor = (150, 150)
+    bridge._brake = False
+    bridge._emergency_latched = False
+    bridge._safety_epoch = 0
+    bridge._emergency_send_pending = False
+    bridge._updated = time.monotonic()
+    pending = []
+
+    def schedule(coro):
+        pending.append(coro)
+
+    bridge._schedule = schedule
+    bridge.latch_emergency()
+    bridge.latch_emergency()
+    assert bridge._brake is True and bridge._motor == (0, 0)
+    assert bridge._emergency_latched is True
+    # set_brake queues one urgent brake; repeated emergency requests add
+    # only one emergency sequence, not one per key repeat/focus event.
+    assert len(pending) == 2
+    assert bridge._emergency_send_pending is True
+    for coro in pending:
+        coro.close()
