@@ -49,8 +49,13 @@ def manual_wheels(pressed: set[str], gear_pwm: int, sensitivity: int) -> tuple[i
     if forward and not steer:
         return speed * forward, speed * forward
     if steer and not forward:
-        power = round(speed * (0.30 + 0.70 * sensitivity / 100))
-        return power * steer, -power * steer
+        # A/D alone is a counter-rotating pivot. Previously sensitivity=50
+        # cut BOTH motor PWMs to 65% of the chosen gear (e.g. Gear 1 110 -> 72).
+        # That can stall either wheel due to unequal static friction, despite
+        # both motors working normally for W/S. Use the selected gear PWM on
+        # BOTH channels for consistent pivot starts; steering sensitivity is
+        # intended to control the radius of W+A / W+D curves, not pivot torque.
+        return speed * steer, -speed * steer
     inside_ratio = 0.90 - 0.85 * sensitivity / 100
     inside = round(speed * inside_ratio)
     if steer > 0:
