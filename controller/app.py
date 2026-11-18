@@ -1229,13 +1229,16 @@ class BuggyApp:
         self.drive_state_var.set('ACTIVE BRAKE / KEY RELEASE')
 
     def _clear_button_drive(self):
-        """Release ALL pointer inputs on global mouse-up, preserving real keyboard holds.
+        """Atomically clear every pointer input on global mouse-up.
 
-        Dragging outside a control can skip its own ButtonRelease binding.
+        A missed ButtonRelease must never leave a wheel moving, and a diagonal
+        release must not produce an intermediate one-wheel pivot frame.
+        Real keyboard-held keys stay independent when focus remains in-app.
         """
-        for key in 'WASD':
-            if 'mouse' in self._pressed_sources[key]:
-                self._release(key, source='mouse')
+        held_by_mouse = tuple(key for key in 'WASD'
+                              if 'mouse' in self._pressed_sources[key])
+        if held_by_mouse:
+            self._release_combo(held_by_mouse)
         if not self.root.focus_displayof():
             self._release_all_keys()
 
