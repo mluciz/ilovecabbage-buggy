@@ -40,7 +40,7 @@ jobs:
           if (!(Test-Path "branding/CabbageStudio.ico")) { throw "Missing branded Windows icon" }
       - name: Bundle console-free Control Studio GUI (Python runtime included)
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --icon "branding/CabbageStudio.ico" --name "CabbageControlStudio" --paths "." --add-data "arduino;arduino" --add-data "WHEEL_DOCTOR_FIELD_GUIDE.md;." --add-data "V18_DESIGN_AUDIT.md;." --add-data "README.md;." --add-data "SPATIAL_LAB_INTEGRATION.md;." --hidden-import "bleak.backends.winrt" desktop_entry.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --icon "branding/CabbageStudio.ico" --name "CabbageControlStudio" --paths "." --add-data "arduino;arduino" --add-data "app.py;." --add-data "ble_bridge.py;." --add-data "WHEEL_DOCTOR_FIELD_GUIDE.md;." --add-data "V18_DESIGN_AUDIT.md;." --add-data "README.md;." --add-data "SPATIAL_LAB_INTEGRATION.md;." --hidden-import "bleak.backends.winrt" desktop_entry.py
           if (!(Test-Path "dist/CabbageControlStudio.exe")) { throw "Windows GUI executable is missing" }
       - name: Stage portable EXE + Unreal Spatial Lab sidecar
         run: |
