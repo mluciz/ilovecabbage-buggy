@@ -47,6 +47,10 @@ public:
     void SetDemoMode(bool bEnabled);
     void SetPaused(bool bEnabled) { bPaused = bEnabled; }
     void ClearObservations();
+    bool ExportObservationsCsv();
+    const FString& GetExportStatus() const { return LastExportStatus; }
+    bool AreRaysVisible() const { return bShowRays; }
+    bool IsDemoGeometryVisible() const { return bShowDemoGeometry; }
     void ToggleRays() { bShowRays = !bShowRays; }
     void ToggleDemoGeometry();
 
@@ -113,4 +117,5 @@ private:
     bool bShowRays = true;
     bool bShowDemoGeometry = true;
     bool bExternalPose = false;
+    FString LastExportStatus = TEXT("No CSV exported in this session");
 };
