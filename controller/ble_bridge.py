@@ -440,6 +440,8 @@ class BLEBridge:
         """
         left, right = int(left), int(right)
         if max(abs(left), abs(right)) > 150 or not (0.1 <= duration_s <= 0.45):
+            with self._lock:
+                self._pulse_active = False
             self.events.put(('wheel_pulse_done', 'REJECTED: invalid pulse parameters'))
             return False
         with self._lock:
@@ -488,7 +490,6 @@ class BLEBridge:
                 self._brake = True
                 self._emergency_latched = True
                 self._updated = time.monotonic()
-                self._pulse_active = False
             try:
                 if client is not None and client.is_connected and self.char is not None:
                     async with self._write_lock:
