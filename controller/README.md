@@ -1,3 +1,11 @@
+# v1.8.2 Windows app — REAL BLE / HARDWARE + manually linked Unreal Editor 5.4
+
+The live connection row has no simulator checkbox, and the Windows installer has no simulator shortcut. Select **FIND DEVICES**, the actual HM-10 and **CONNECT** only after the power supply and wheel faults are resolved. The existing emergency-brake latch, Wheel Doctor and guarded physical motor probes remain in place. Don't test moving on the floor before both suspended wheels and emergency braking are verified.
+
+If the **SPATIAL LAB / 3D** launcher says Unreal Engine 5.4 cannot be found, click **SYSTEM → SELECT UNREAL EDITOR 5.4**, navigate to your actual UE 5.4 install folder's `Engine/Binaries/Win64/UnrealEditor.exe`, then retry F2. The saved editor path persists across restarts; first F2 also prompts for a missing editor. This is not a compiled Unreal game. The Unreal Engine and C++ build tools are required to compile the project. Refer to [INSTALL_WINDOWS.md](INSTALL_WINDOWS.md) for the full real-buggy wiring / BLE bench checklist.
+
+---
+
 # Downloadable Windows desktop app + Spatial Lab / 3D (v1.8.1 candidate)
 
 **No terminal or Python install required to run the controller.** Download the installer from the GitHub Actions artifact named `CABBAGE-Studio-v1.8.1-Windows-INSTALLER-SPATIAL-LAB` and double-click the Setup EXE. It installs a Start Menu shortcut and optional desktop shortcut. In the Control Studio rail, choose **SPATIAL LAB / 3D** or press **F2**; the launcher finds the included `unreal-visualizer/BuggySensorViz.uproject` folder. The Unreal project **is source**, not a compiled standalone game, and needs Unreal Engine 5.4 + Visual Studio C++ build tools (or a separately built BuggySensorViz EXE) to display the 3D scene. The controller brakes and refuses the launch if a real BLE device is still connected. **No hardware test of this integration has been completed.** See [INSTALL_WINDOWS.md](INSTALL_WINDOWS.md).

@@ -20,8 +20,9 @@ from operator_preferences import load_preferences, save_preferences, DEFAULTS
 from power_path_window import PowerPathWindow
 from preflight_window import PreflightWindow
 from operator_guide_window import GuideWindow
-from spatial_lab_launcher import (discover_target, save_target, launch as launch_spatial_lab,
-                                  SpatialLabLaunchError)
+from spatial_lab_launcher import (discover_target, save_target, save_editor,
+                                  unreal_editor_path, launch as launch_spatial_lab,
+                                  SpatialLabLaunchError, UnrealEditorNotFound)
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
@@ -43,7 +44,7 @@ BLUE = '#567ee5'
 class BuggyApp:
     def __init__(self, root):
         self.root = root
-        root.title('CABBAGE / Buggy Control Studio v1.8.1 — Spatial Lab candidate')
+        root.title('CABBAGE / Buggy Control Studio v1.8.2 — Live Buggy + Spatial Lab candidate')
         root.geometry('1380x900')
         root.minsize(1020, 690)
         root.configure(bg=BG)
@@ -216,10 +217,8 @@ class BuggyApp:
         self.device_combo.pack(side='left', padx=(0, 12))
         self._label(row, 'UART', color=MUTED, size=9).pack(side='left', padx=(0, 7))
         self._entry(row, self.uuid_var, 7).pack(side='left', padx=(0, 9))
-        tk.Checkbutton(row, text='SIMULATOR', variable=self.demo_var, bg=CARD,
-                       fg=MUTED, selectcolor=CARD_DARK, activebackground=CARD,
-                       activeforeground=TEXT, font=('Segoe UI', 9, 'bold')).pack(
-                           side='left', padx=(0, 12))
+        self._label(row, 'REAL BLE  /  HARDWARE', color=CYAN,
+                    size=9, bold=True).pack(side='left', padx=(0, 12))
         self.connect_btn = self._button(row, 'CONNECT', self.toggle_connection,
                                       color='#157d75', width=12)
         self.connect_btn.pack(side='left')
@@ -356,6 +355,7 @@ class BuggyApp:
             ('LINK STRESS SIMULATOR', self.run_link_stress_check, '#344d76'),
             ('OPERATOR GUIDE', self.open_guide, '#344d76'),
             ('OPEN SPATIAL LAB  /  3D', self.open_spatial_lab, '#196b75'),
+            ('SELECT UNREAL EDITOR 5.4', self.select_unreal_editor, '#245b71'),
         )):
             self._button(sys_actions, title, command, color=color, width=20).grid(
                  row=index//2, column=index%2, sticky='ew', padx=5, pady=5)
@@ -717,6 +717,34 @@ class BuggyApp:
         if self.online and not self.demo:
             self.bridge.probe_version()
 
+    def select_unreal_editor(self):
+        """Ask for the installed UE 5.4 editor executable and remember it.
+
+        This action never starts Unreal or sends drive commands. Braking before
+        presenting a modal dialog prevents a held key from continuing movement.
+        """
+        self.emergency_stop(quiet=True)
+        candidate = filedialog.askopenfilename(
+            title='Select Unreal Engine 5.4 Editor (UnrealEditor.exe)',
+            filetypes=[('Unreal Editor executable', 'UnrealEditor.exe'),
+                       ('Windows executable', '*.exe')],
+            initialdir=str(unreal_editor_path().parent) if unreal_editor_path() else 'C:/Program Files/Epic Games')
+        if not candidate:
+            self.log('Unreal Editor selection cancelled; no change was saved.')
+            return None
+        try:
+            selected = save_editor(candidate)
+        except (SpatialLabLaunchError, OSError) as exc:
+            messagebox.showerror('Invalid Unreal Editor selection', str(exc))
+            self.log('Unreal Editor selection rejected.')
+            return None
+        self.log('Unreal Editor location saved: ' + str(selected))
+        messagebox.showinfo('Unreal Editor linked',
+            'Saved Unreal Editor executable. Open SPATIAL LAB / 3D or press F2 '
+            'to open BuggySensorViz.uproject in this Editor. This does not '
+            'connect to the buggy or certify the C++ project build.')
+        return selected
+
     def open_spatial_lab(self):
         """Open the separately installed Unreal 3D visualizer.
 
@@ -756,6 +784,25 @@ class BuggyApp:
                 return False
         try:
             launch_spatial_lab(target)
+        except UnrealEditorNotFound:
+            # The project is present; give an actionable file picker for the
+            # UE installation rather than the old, unhelpful missing-UE popup.
+            if not messagebox.askyesno('Find Unreal Engine 5.4',
+                'The Spatial Lab project was found, but UnrealEditor.exe '
+                'was not found in the standard folders.\n\n'
+                'Select the installed Unreal Editor executable now?\n'
+                'Usually: UE_5.4\\Engine\\Binaries\\Win64\\UnrealEditor.exe'):
+                self.log('Spatial Lab cannot open: Unreal Editor path is not configured.')
+                return False
+            editor = self.select_unreal_editor()
+            if editor is None:
+                return False
+            try:
+                launch_spatial_lab(target, editor=editor)
+            except SpatialLabLaunchError as exc:
+                messagebox.showerror('Could not open Spatial Lab', str(exc))
+                self.log('Spatial Lab launch failed: ' + str(exc))
+                return False
         except SpatialLabLaunchError as exc:
             messagebox.showerror('Could not open Spatial Lab', str(exc))
             self.log('Spatial Lab launch failed: ' + str(exc))

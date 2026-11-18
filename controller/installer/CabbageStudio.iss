@@ -2,7 +2,7 @@
 ; Build ONLY on Windows after PyInstaller creates dist\CabbageControlStudio.exe
 ; No auto-start, no system drivers, no Arduino flashing, no elevated privileges.
 #define MyAppName "Cabbage Control Studio"
-#define MyAppVersion "1.8.1"
+#define MyAppVersion "1.8.2"
 #define MyAppExeName "CabbageControlStudio.exe"
 
 [Setup]
@@ -24,10 +24,10 @@ WizardStyle=modern
 DisableProgramGroupPage=yes
 AllowNoIcons=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
-UninstallDisplayName=Cabbage Control Studio (v1.8.1 Spatial Lab Candidate)
+UninstallDisplayName=Cabbage Control Studio (v1.8.2 Live Buggy Candidate)
 SetupIconFile=..\branding\CabbageStudio.ico
 OutputDir=..\dist\installer
-OutputBaseFilename=CabbageControlStudio-v1.8.1-Setup-SpatialLab-CANDIDATE
+OutputBaseFilename=CabbageControlStudio-v1.8.2-Setup-LiveBuggy-CANDIDATE
 Compression=lzma2
 SolidCompression=yes
 SetupLogging=yes
@@ -53,7 +53,6 @@ Source: "..\..\unreal-visualizer\*"; DestDir: "{app}\unreal-visualizer"; Flags: 
 
 [Icons]
 Name: "{group}\Cabbage Control Studio"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "Open the buggy controller (starts disconnected)"
-Name: "{group}\Cabbage Studio — Demo (No Motors)"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--demo"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "Open a simulated buggy (no Bluetooth)"
 Name: "{group}\Uninstall Cabbage Control Studio"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\Cabbage Control Studio"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"
 

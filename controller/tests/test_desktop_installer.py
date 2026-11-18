@@ -30,11 +30,12 @@ def test_installer_is_user_scoped_and_does_not_need_admin():
     assert 'Source: "..\\SPATIAL_LAB_INTEGRATION.md"' in text
 
 
-def test_installer_creates_shortcuts_and_installed_demo():
+def test_installer_creates_live_buggy_shortcuts_without_simulator():
     text = INSTALLER.read_text(encoding="utf-8")
     assert r'{group}\Cabbage Control Studio' in text
     assert r'{autodesktop}\Cabbage Control Studio' in text
-    assert r'Parameters: "--demo"' in text
+    assert 'Parameters: "--demo"' not in text
+    assert 'Demo (No Motors)' not in text
     assert "Flags: unchecked" in text
     assert "UninstallDisplayName=" in text
     assert "Filename: \"{uninstallexe}\"" in text
@@ -50,8 +51,8 @@ def test_packaging_is_genuinely_windowed_and_has_installer_artifact():
     assert "--onefile" in text
     assert "branding/CabbageStudio.ico" in text
     assert "installer/CabbageStudio.iss" in text
-    assert "CABBAGE-Studio-v1.8.1-Windows-INSTALLER-SPATIAL-LAB" in text
-    assert "CABBAGE-Studio-v1.8.1-PORTABLE-WITH-SPATIAL-LAB" in text
+    assert "CABBAGE-Studio-v1.8.2-Windows-INSTALLER-LIVE" in text
+    assert "CABBAGE-Studio-v1.8.2-PORTABLE-WITH-SPATIAL-LAB" in text
     assert 'Copy-Item -Path "../unreal-visualizer"' in text
     assert 'dist/portable/unreal-visualizer/BuggySensorViz.uproject' in text
     assert 'tests/test_spatial_lab_launcher.py' in text
@@ -90,3 +91,13 @@ def test_icon_builder_produces_real_windows_ico_when_pillow_available(tmp_path):
         assert image.size == (256, 256)
         sizes = image.ico.sizes()
         assert (16, 16) in sizes and (48, 48) in sizes and (256, 256) in sizes
+
+
+def test_live_hardware_ui_requires_explicit_ble_and_has_editor_picker():
+    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert "'REAL BLE  /  HARDWARE'" in src
+    assert "text='SIMULATOR'" not in src
+    assert "'SELECT UNREAL EDITOR 5.4'" in src
+    assert "def select_unreal_editor(self):" in src
+    assert "UnrealEditorNotFound" in src
+    assert "self.emergency_stop(quiet=True)" in src

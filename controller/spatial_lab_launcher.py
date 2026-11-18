@@ -16,6 +16,58 @@ from typing import Callable, Optional
 class SpatialLabLaunchError(RuntimeError):
     pass
 
+
+class UnrealEditorNotFound(SpatialLabLaunchError):
+    """A valid Spatial Lab project was found, but the UE Editor was not."""
+
+
+def validate_editor(candidate: str | Path) -> Path:
+    """Accept an explicitly chosen UnrealEditor.exe, not an arbitrary program.
+
+    This checks file layout/name, not the installed engine version or whether
+    the native Unreal C++ project is actually compatible.
+    """
+    path = Path(candidate).expanduser().resolve()
+    if not path.is_file() or path.name.casefold() != "unrealeditor.exe":
+        raise SpatialLabLaunchError(
+            "Select the actual UnrealEditor.exe file, not the Epic Games Launcher "
+            "or BuggySensorViz.uproject. It is usually in "
+            "UE_5.4/Engine/Binaries/Win64/UnrealEditor.exe."
+        )
+    return path
+
+
+def editor_settings_path() -> Path:
+    """Keep the editor location distinct from the selected .uproject path."""
+    return settings_path().with_name("unreal_editor.json")
+
+
+def save_editor(path: str | Path) -> Path:
+    selected = validate_editor(path)
+    dst = editor_settings_path()
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_suffix(".tmp")
+    try:
+        tmp.write_text(json.dumps({"schema": 1, "editor_path": str(selected)}, indent=2),
+                       encoding="utf-8")
+        os.replace(tmp, dst)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return selected
+
+
+def stored_editor() -> Optional[Path]:
+    try:
+        data = json.loads(editor_settings_path().read_text(encoding="utf-8"))
+        if type(data) is dict and data.get("schema") == 1:
+            return validate_editor(data["editor_path"])
+    except (OSError, ValueError, TypeError, KeyError, SpatialLabLaunchError):
+        pass
+    return None
+
 def settings_path() -> Path:
     if os.name == "nt":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
@@ -91,6 +143,10 @@ def discover_target() -> Optional[Path]:
     return None
 
 def unreal_editor_path() -> Optional[Path]:
+    """Resolve the user's chosen UE5.4 executable before default install paths."""
+    selected = stored_editor()
+    if selected:
+        return selected
     override = os.environ.get("UE_ROOT")
     roots = []
     if override:
@@ -100,9 +156,19 @@ def unreal_editor_path() -> Optional[Path]:
             roots.append(Path(os.environ[var]) / "Epic Games" / "UE_5.4")
     roots.append(Path("C:/Program Files/Epic Games/UE_5.4"))
     for root in roots:
-        candidate = root / "Engine" / "Binaries" / "Win64" / "UnrealEditor.exe"
-        if candidate.is_file():
-            return candidate
+        # UE_ROOT may point at an editor executable, the Win64 folder or the UE root.
+        if root.name.casefold() == "unrealeditor.exe":
+            candidates = [root]
+        else:
+            candidates = [
+                root / "UnrealEditor.exe",
+                root / "Engine" / "Binaries" / "Win64" / "UnrealEditor.exe",
+            ]
+        for candidate in candidates:
+            try:
+                return validate_editor(candidate)
+            except SpatialLabLaunchError:
+                continue
     return None
 
 def launch(target: str | Path, *, platform: Optional[str] = None,
@@ -117,11 +183,11 @@ def launch(target: str | Path, *, platform: Optional[str] = None,
     if selected.suffix.lower() == ".uproject":
         ue = editor if editor is not None else unreal_editor_path()
         if not ue or not Path(ue).is_file():
-            raise SpatialLabLaunchError(
-                "Unreal Engine 5.4 was not found. Install UE 5.4 with C++ tools, "
-                "or select a previously packaged Spatial Lab .exe."
+            raise UnrealEditorNotFound(
+                "Unreal Engine 5.4 could not be located automatically. "
+                "Select UnrealEditor.exe once in CABBAGE to remember your installation."
             )
-        argv = [str(Path(ue).resolve()), str(selected)]
+        argv = [str(validate_editor(ue)), str(selected)]
         workdir = selected.parent
     else:
         argv = [str(selected)]
