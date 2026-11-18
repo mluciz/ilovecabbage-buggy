@@ -11,7 +11,8 @@ def sample():
     return {"schema": 2, "source": "unit-test",
             "sensors": [{"id": n, "valid": True, "distance_mm": 250.} for n in ("front", "left", "right")],
             "pose": {"x_m": 0, "y_m": 0, "yaw_deg": 0},
-            "imu": {"gyro_z_dps": 0, "dt_s": .05}}
+            "imu": {"gyro_x_dps": 0, "gyro_y_dps": 0, "gyro_z_dps": 0,
+                    "accel_x_g": 0, "accel_y_g": 0, "accel_z_g": 1, "dt_s": .05}}
 
 class ThreeSensorProtocolTests(unittest.TestCase):
     def test_exact_three_distinct(self):
@@ -42,6 +43,10 @@ class ThreeSensorProtocolTests(unittest.TestCase):
         p["sensors"][1] = {"id": "left", "valid": False}
         out = validate_packet(p)
         self.assertEqual(out["sensors"][1], {"id": "left", "valid": False})
+    def test_reject_bad_imu(self):
+        p = sample()
+        p["imu"]["gyro_x_dps"] = float("inf")
+        with self.assertRaises(TelemetryError): validate_packet(p)
     def test_reject_bad_pose(self):
         p = sample()
         p["pose"]["x_m"] = float("nan")
