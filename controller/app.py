@@ -16,6 +16,7 @@ from diagnostic_window import DiagnosticWindow
 from wheel_doctor_window import WheelDoctorWindow
 from wheel_doctor import audit_sources
 from premium_visuals import render_drive, render_link_health, command_label
+from operator_preferences import load_preferences, save_preferences, DEFAULTS
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
@@ -64,7 +65,8 @@ class BuggyApp:
         self._release_debounce_ms = 65
         self._feedback_warning_at = 0.0
         self._last_stream_warning_at = 0.0
-        self.gear = 2
+        self.preferences = load_preferences()
+        self.gear = self.preferences['gear']
         self.route = []
         self.running = False
         self.route_index = 0
@@ -94,7 +96,7 @@ class BuggyApp:
         self.link_notify_state = None
 
         self.device_var = tk.StringVar()
-        self.uuid_var = tk.StringVar(value='FFE1')
+        self.uuid_var = tk.StringVar(value=self.preferences['gatt_uuid'])
         self.demo_var = tk.BooleanVar(value=False)
         self.shape_var = tk.StringVar(value='Circle')
         self.turn_var = tk.StringVar(value='L')
@@ -103,8 +105,8 @@ class BuggyApp:
         self.legs_var = tk.StringVar(value='5')
         self.angle_var = tk.StringVar(value='45')
         self.laps_var = tk.StringVar(value='1')
-        self.speed_var = tk.StringVar(value='22')
-        self.width_var = tk.StringVar(value='13')
+        self.speed_var = tk.StringVar(value=self.preferences['measured_speed_cm_s'])
+        self.width_var = tk.StringVar(value=self.preferences['wheel_spacing_cm'])
         self.status_var = tk.StringVar(value='DISCONNECTED')
         self.command_var = tk.StringVar(value='L 0   |   R 0')
         self.stats_var = tk.StringVar(value='Create a route to see its estimated duration.')
@@ -112,10 +114,11 @@ class BuggyApp:
         self.keys_var = tk.StringVar(value='HELD KEYS: none')
         self.last_input_var = tk.StringVar(value='INPUT: waiting for keyboard — click ACTIVATE WASD')
         self.gear_info_var = tk.StringVar(value=f'GEAR {self.gear} / PWM {GEARS[self.gear]}')
-        self.steering_var = tk.IntVar(value=50)
-        self.precision_var = tk.BooleanVar(value=False)
-        self.balance_var = tk.IntVar(value=0)  # 0=matched outputs, + favors right
+        self.steering_var = tk.IntVar(value=self.preferences['steering'])
+        self.precision_var = tk.BooleanVar(value=self.preferences['precision'])
+        self.balance_var = tk.IntVar(value=self.preferences['balance'])  # 0=matched outputs, + favors right
         self.balance_info_var = tk.StringVar(value="MOTOR BALANCE 0% (equal)")
+        self.preference_status_var = tk.StringVar(value='TUNING  /  Saved only when you click SAVE SETTINGS')
         self.link_health_var = tk.StringVar(value="COMMAND LINK: disconnected")
         self.quick_health_var = tk.StringVar(value="OFFLINE  /  Motors locked  /  Pin map available")
         self.steering_info_var = tk.StringVar(value='STEERING 50%')
@@ -129,6 +132,9 @@ class BuggyApp:
 
         self._make_style()
         self._build_ui()
+        self._balance_changed()
+        self._steering_changed()
+        self.gear_info_var.set(self._gear_caption())
         # Tk Scale does not consistently call command when IntVar is changed by code.
         self.steering_var.trace_add('write', lambda *_: self._steering_changed())
         self.balance_var.trace_add('write', lambda *_: self._balance_changed())
@@ -419,8 +425,17 @@ class BuggyApp:
                  length=342).pack(fill='x')
         self._label(manual, 'Balance only changes MANUAL PWM, not auto tracks or motor wiring.',
                     size=8, color=MUTED).pack(anchor='w', padx=15, pady=(0, 5))
-        self._label(manual, 'KEY RELEASE = ACTIVE BRAKE · SPACE / STOP = ACTIVE BRAKE',
-                    color=AMBER, size=8).pack(anchor='w', padx=15, pady=(0, 12))
+        tuning_actions = tk.Frame(manual, bg=CARD)
+        tuning_actions.pack(fill='x', padx=15, pady=(7, 4))
+        self._button(tuning_actions, 'SAVE TUNING', self.save_tuning,
+                     color='#205e62', width=17).pack(side='left')
+        self._button(tuning_actions, 'RESET', self.reset_tuning,
+                     color='#344c66', width=10).pack(side='right')
+        tk.Label(manual, textvariable=self.preference_status_var, bg=CARD, fg=MUTED,
+                 wraplength=380, justify='left', font=('Segoe UI', 8)).pack(
+                     anchor='w', padx=15, pady=(3, 4))
+        self._label(manual, 'KEY RELEASE = BRAKE · ESC / SPACE = STOP',
+                     color=AMBER, size=8).pack(anchor='w', padx=15, pady=(0, 12))
 
         auto = self._panel(routes_left, '02   ROUTE DESIGN  /  OPEN LOOP')
         auto.pack(fill='both', expand=True)
@@ -792,6 +807,34 @@ class BuggyApp:
         self.flight.record('OFFLINE', 'LINK_STRESS_PASS' if ok else 'LINK_STRESS_FAIL', details)
         self.log('Offline link stress simulation ' + ('passed' if ok else 'FAILED'))
         messagebox.showinfo('Offline link stress (synthetic)', details)
+
+    def save_tuning(self):
+        """Persist tuning only; never motion, emergency state or BLE auto-connect."""
+        if self.online and not self.demo and (self.running or self.pressed):
+            self.emergency_stop(quiet=True)
+        data = dict(gear=self.gear, precision=self.precision_var.get(),
+                    steering=self.steering_var.get(), balance=self.balance_var.get(),
+                    gatt_uuid=self.uuid_var.get().strip(),
+                    measured_speed_cm_s=self.speed_var.get(),
+                    wheel_spacing_cm=self.width_var.get())
+        try:
+            path = save_preferences(data)
+        except (OSError, ValueError) as exc:
+            self.preference_status_var.set('SAVE FAILED: ' + str(exc))
+            self.log('Preferences not saved: ' + str(exc))
+            return
+        self.preference_status_var.set('SAVED  /  Safe defaults for next launch; drive remains locked')
+        self.log('Operator tuning saved: ' + str(path))
+
+    def reset_tuning(self):
+        if self.online and not self.demo and (self.running or self.pressed):
+            self.emergency_stop(quiet=True)
+        self.steering_var.set(DEFAULTS['steering'])
+        self.balance_var.set(DEFAULTS['balance'])
+        self.precision_var.set(DEFAULTS['precision'])
+        self.set_gear(DEFAULTS['gear'])
+        self.preference_status_var.set('RESET  /  Click SAVE TUNING to keep these values')
+        self.log('Tuning reset to safe defaults. No physical wheel test conducted.')
 
     def _precision_changed(self):
         # Never silently alter a motor's live PWM while the user is moving.
