@@ -109,6 +109,7 @@ void UBuggyVizDashboard::BuildInterface()
     LinkText = AddText(Stack, TEXT("No external stream"), 12, VizStyle::Muted);
     PoseText = AddText(Stack, TEXT("Pose: waiting..."), 12, VizStyle::Blue, 7);
     MapText = AddText(Stack, TEXT("Observations: 0"), 12, VizStyle::Muted);
+    ImuText = AddText(Stack, TEXT("IMU: awaiting 6-axis data"), 11, VizStyle::Blue, 6);
 
     AddText(Stack, TEXT("VL53L0X  /  DISTANCE CHANNELS"), 14, VizStyle::White, 16);
     SensorTextFront = AddText(Stack, TEXT("FRONT   -- mm"), 14, VizStyle::Blue, 5);
@@ -161,7 +162,16 @@ void UBuggyVizDashboard::Refresh()
         Visualizer->GetActorLocation().X / 100.f, Visualizer->GetActorLocation().Y / 100.f, Visualizer->GetHeadingDegrees())));
     MapText->SetText(FText::FromString(FString::Printf(TEXT("POINTS  %d  /  MAX %d    |    %s"),
         Visualizer->GetObservationCount(), Visualizer->GetObservationLimit(),
-        Visualizer->HasExternalPose() ? TEXT("EXTERNAL POSE") : TEXT("POSE UNCONFIRMED"))));
+        Demo ? TEXT("SIMULATED POSE") : (Visualizer->HasExternalPose() ? TEXT("EXTERNAL POSE") : TEXT("POSITION UNOBSERVED")))));
+    if (ImuText)
+    {
+        const FVector G = Visualizer->GetGyroscopeDps();
+        const FVector A = Visualizer->GetAccelerometerG();
+        ImuText->SetText(FText::FromString(Visualizer->HasImu()
+            ? FString::Printf(TEXT("MPU-6500 | P %.1f  R %.1f deg | Gyro %.1f/%.1f/%.1f dps | Acc %.2f/%.2f/%.2f g"),
+                Visualizer->GetPitchDegrees(), Visualizer->GetRollDegrees(), G.X,G.Y,G.Z,A.X,A.Y,A.Z)
+            : TEXT("MPU-6500 | NO VALID 6-AXIS SAMPLE")));
+    }
     const TCHAR* Names[] = {TEXT("FRONT"), TEXT("LEFT "), TEXT("RIGHT")};
     UTextBlock* Widgets[] = {SensorTextFront, SensorTextLeft, SensorTextRight};
     for (int32 i=0; i<3; ++i)
