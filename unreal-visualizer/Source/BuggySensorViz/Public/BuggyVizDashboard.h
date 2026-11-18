@@ -1,6 +1,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/CanvasPanelSlot.h"
 #include "BuggyVizDashboard.generated.h"
 class ABuggyTelemetryActor;
 class UVerticalBox;
