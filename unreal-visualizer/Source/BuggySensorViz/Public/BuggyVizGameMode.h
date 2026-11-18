@@ -12,6 +12,8 @@ class BUGGYSENSORVIZ_API ABuggyVizGameMode : public AGameModeBase
 public:
     ABuggyVizGameMode();
     virtual void BeginPlay() override;
+    virtual void Tick(float DeltaTime) override;
+    void EnsureLocalInterface();
 private:
     UPROPERTY(Transient) TObjectPtr<ABuggyTelemetryActor> Visualizer;
     UPROPERTY(Transient) TObjectPtr<UBuggyVizDashboard> Dashboard;
