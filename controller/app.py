@@ -535,7 +535,7 @@ class BuggyApp:
                  font=('Consolas', 9)).pack(side='right')
         self._label(dash_body, 'PWM/accepted commands = firmware only, NOT measured wheel RPM.',
                     color=AMBER, size=8).pack(anchor='w', pady=(6, 0))
-        self._label(dash_body, 'BLE drive ~120 ms · idle ~300 ms · Arduino telemetry pauses while moving',
+        self._label(dash_body, 'BLE drive ~160 ms · idle ~650 ms · Arduino telemetry pauses while moving',
                     color=MUTED, size=8).pack(anchor='w', pady=(1, 0))
 
         bottom = tk.Frame(self.root, bg=BG)
@@ -550,6 +550,56 @@ class BuggyApp:
         self.log_text.pack(fill='x', pady=(4, 0))
         self._navigate('drive', initial=True)
         self.log('CABBAGE STUDIO: start in simulator; device needs explicit arm. F1 opens Wheel Doctor.')
+
+    def _navigate(self, name, initial=False):
+        """Switch workspaces without leaving stale motor commands active."""
+        if name not in self.pages:
+            raise ValueError('Unknown workspace: ' + str(name))
+        previous = getattr(self, '_active_page', None)
+        if previous == name and not initial:
+            return
+        if not initial and previous is not None:
+            # Navigating away from a motor-control context is a deliberate brake.
+            # The next drive requires an explicit re-arm, not an old held key.
+            if self.running or self.pressed or self.wheel_probe_active:
+                self.emergency_stop(quiet=True)
+                self.log('Safety brake: workspace changed; release keys and re-arm.')
+        self.pages[name].tkraise()
+        self._active_page = name
+        for page, button in self.nav_buttons.items():
+            button.configure(bg=('#21605f' if page == name else '#11243a'),
+                             fg=TEXT if page == name else MUTED,
+                             activebackground='#286c68')
+        if name == 'routes':
+            self.preview_route(log_errors=False)
+        if name == 'drive':
+            self._redraw_drive_visual()
+        if name == 'system':
+            self._redraw_link_visual()
+
+    def _redraw_drive_visual(self):
+        if not hasattr(self, 'motor_visual'):
+            return
+        if self.online and self.demo:
+            mode = 'SIMULATOR'
+        elif not self.online:
+            mode = 'DISCONNECTED'
+        elif self.brake_latched:
+            mode = 'STOP / ARMED OFF'
+        elif self.running:
+            mode = 'ROUTE'
+        else:
+            mode = 'MANUAL'
+        l, r = int(self.applied_left), int(self.applied_right)
+        render_drive(self.motor_visual, l, r, mode, self.brake_latched)
+
+    def _redraw_link_visual(self):
+        if not hasattr(self, 'link_visual'):
+            return
+        age = time.monotonic()-self._last_tx_at if self.online and self._last_tx_at else None
+        has_reply = bool(self.online and not self.demo and self.last_feedback
+                         and time.monotonic()-self.last_feedback_at < 2.5)
+        render_link_health(self.link_visual, self.online and not self.demo, has_reply, age)
 
     def log(self, message):
         self.log_text.configure(state='normal')
@@ -783,11 +833,19 @@ class BuggyApp:
         return None
 
     def _scroll_left(self, event):
-        # Scroll route controls only while the pointer is within the left panel.
-        lx, ly = self.left_outer.winfo_rootx(), self.left_outer.winfo_rooty()
-        if lx <= event.x_root < lx + self.left_outer.winfo_width() and \
-           ly <= event.y_root < ly + self.left_outer.winfo_height():
-            self.left_canvas.yview_scroll(-int(event.delta / 120), 'units')
+        # Scroll only the currently visible pane under the pointer.
+        if not event.delta:
+            return
+        target = ((self.left_outer, self.left_canvas)
+                  if self._active_page == 'drive' else
+                  (self.route_left_outer, self.route_left_canvas)
+                  if self._active_page == 'routes' else None)
+        if target is None:
+            return
+        outer, canvas = target
+        lx, ly = outer.winfo_rootx(), outer.winfo_rooty()
+        if lx <= event.x_root < lx+outer.winfo_width() and ly <= event.y_root < ly+outer.winfo_height():
+            canvas.yview_scroll(-int(event.delta / 120), 'units')
 
     def _bind_keys(self):
         # bind_all also captures keystrokes when focus is on a Button or Frame.
@@ -871,6 +929,16 @@ class BuggyApp:
         # Space is reserved for typing spaces inside entries/text boxes.
         if key == 'ESCAPE':
             self.emergency_stop()
+            return 'break'
+        # An open diagnostic/dialog window must never inherit live WASD controls.
+        # Escape above still acts as a global emergency stop.
+        try:
+            if event.widget.winfo_toplevel() is not self.root:
+                return 'break'
+        except (AttributeError, tk.TclError):
+            return 'break'
+        if self._active_page != 'drive' and key in ('W', 'A', 'S', 'D'):
+            self.last_input_var.set('INPUT: open DRIVE workspace and ACTIVATE WASD first')
             return 'break'
         if self._typing(event.widget):
             self.last_input_var.set(f'INPUT: {key} ignored — text field focused; click ACTIVATE WASD')
@@ -1030,6 +1098,12 @@ class BuggyApp:
         self._display_manual_command()
 
     def set_gear(self, gear):
+        gear = int(gear)
+        if gear not in (1, 2, 3, 4):
+            raise ValueError('Gear must be 1..4')
+        if self.online and not self.demo and self.pressed and gear != self.gear:
+            self.emergency_stop(quiet=True)
+            self.log('Gear changed during motor drive: braking; re-arm before moving again.')
         self.gear = gear
         self._paint_gears()
         self.gear_info_var.set(self._gear_caption())
@@ -1504,6 +1578,9 @@ class BuggyApp:
         self._redraw_telemetry_bars()
         if self.diagnostic_window is not None:
             self.diagnostic_window.refresh()
+        self._redraw_drive_visual()
+        if self._active_page == 'system':
+            self._redraw_link_visual()
         self._tick_after = self.root.after(80, self._tick)
 
     def _redraw_telemetry_bars(self):
