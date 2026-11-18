@@ -8,7 +8,7 @@ An **isolated companion project** for the buggy's **three VL53L0X range sensors 
 
 Requirements: Unreal Engine **5.4** installed from Epic Games Launcher; Visual Studio **2022** with Desktop C++ and Game Development with C++ components (Windows SDK / UE toolchain); a Windows PC capable of UE5.
 
-1. Optionally run `launch_doctor.bat` first, to check local project files, Python and ports (the tool does not validate real wiring). Then open `BuggySensorViz.uproject`. If prompted to generate or rebuild C++ project modules, choose Yes. If the build fails, use right-click `BuggySensorViz.uproject` → Generate Visual Studio project files; open the solution; build `Development Editor | Win64`.
+1. Optionally run `launch_doctor.bat` first, to check local project files, Python and ports (the tool does not validate real wiring). For a one-click local build and Editor launch, use **`build_and_open_unreal.bat`**. Otherwise open `BuggySensorViz.uproject`. If prompted to generate or rebuild C++ project modules, choose Yes. If the build fails, use right-click `BuggySensorViz.uproject` → Generate Visual Studio project files; open the solution; build `Development Editor | Win64`.
 2. Open the default `Entry` map; press **Play**. No handcrafted `.umap` is required: the game mode spawns a buggy, ground grid, five demonstration objects, camera and dashboard.
 3. Default is **INTERNAL SIMULATION**. Watch the front/left/right distance readings and white/green/blue/orange observation markers.
 4. Use the in-app buttons to pause, clear map points, **export observations to CSV** (project `Saved/SpatialLab`), hide rays, hide demo geometry, change camera, focus, or switch to external UDP. You can also cycle **Arena / Corridor / Open Field**, inspect packet rejects and rates, view range bars and edit the three sensor mounting angles.
@@ -32,7 +32,7 @@ Each packet has three independent VL53L0X channels and six MPU-6500 measurement 
 py -3 -m unittest discover -s tests -v
 ```
 
-Or double-click `run_tests.bat`. GitHub Actions runs tests on both Windows and Linux with Python 3.11 and 3.13. See [QA matrix](docs/TEST_MATRIX.md).
+Or double-click `run_tests.bat`. GitHub Actions runs tests on both Windows and Linux with Python 3.11 and 3.13. See [QA matrix](docs/TEST_MATRIX.md) and the [Unreal Windows build guide](docs/WINDOWS_BUILD_AND_RELEASE.md).
 
 ### Record, replay and diagnose sensor sessions
 
@@ -92,7 +92,7 @@ Replace COM8 with the actual separate sensor port. This cannot silently share th
 - `tools/`: strict protocol, external three-channel demo, read-only serial bridge, localhost recording/replay, preflight doctor and optional Editor material generator
 - `tests/`: standard-library protocol, geometry, recordings/replay and setup preflight tests
 - `firmware/`: **bench-only sensor sketch**, never touched the regular buggy sketch
-- `docs/`: pin audit, QA matrix, UI and session walkthrough, change log
+- `docs/`: pin audit, QA matrix, Windows build guide, UI and session walkthrough, change log
 
 ## Known limitations
 
