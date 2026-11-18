@@ -202,7 +202,6 @@ void ABuggyTelemetryActor::ApplyPacket(const FString& Payload)
             FMath::Abs(X) > 50 || FMath::Abs(Y) > 50 || FMath::Abs(Yaw) > 36000)
         { ++RejectedPacketCount; return; }
     }
-    }
     const TSharedPtr<FJsonObject>* Imu = nullptr;
     if (Root->TryGetObjectField(TEXT("imu"), Imu))
     {
