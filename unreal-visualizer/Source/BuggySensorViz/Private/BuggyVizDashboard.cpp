@@ -11,6 +11,9 @@
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
 #include "Components/Spacer.h"
+#include "Components/ProgressBar.h"
+#include "Components/EditableTextBox.h"
+#include "Misc/DefaultValueHelper.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
 
@@ -110,13 +113,38 @@ void UBuggyVizDashboard::BuildInterface()
     PoseText = AddText(Stack, TEXT("Pose: waiting..."), 12, VizStyle::Blue, 7);
     MapText = AddText(Stack, TEXT("Observations: 0"), 12, VizStyle::Muted);
     ImuText = AddText(Stack, TEXT("IMU: awaiting 6-axis data"), 11, VizStyle::Blue, 6);
+    DiagnosticsText = AddText(Stack, TEXT("GOOD 0   REJECTED 0   0 Hz"), 11, VizStyle::Muted, 6);
+    ProximityText = AddText(Stack, TEXT("PROXIMITY  /  NO VALID RANGE"), 14, VizStyle::Orange, 7);
 
     AddText(Stack, TEXT("VL53L0X  /  DISTANCE CHANNELS"), 14, VizStyle::White, 16);
     SensorTextFront = AddText(Stack, TEXT("FRONT   -- mm"), 14, VizStyle::Blue, 5);
     SensorTextLeft = AddText(Stack, TEXT("LEFT   -- mm"), 14, VizStyle::Blue, 5);
     SensorTextRight = AddText(Stack, TEXT("RIGHT   -- mm"), 14, VizStyle::Blue, 5);
+    for (int32 i=0; i<3; ++i)
+    {
+        SensorBars[i] = WidgetTree->ConstructWidget<UProgressBar>();
+        SensorBars[i]->SetPercent(0.f);
+        SensorBars[i]->SetFillColorAndOpacity(i==0 ? VizStyle::Lime : (i==1 ? VizStyle::Blue : VizStyle::Orange));
+        UVerticalBoxSlot* BarSlot = Stack->AddChildToVerticalBox(SensorBars[i]);
+        BarSlot->SetPadding(FMargin(0, 0, 0, 8));
+    }
+    AddText(Stack, TEXT("SENSOR MOUNT / ANGLES (DEGREES)"), 13, VizStyle::White, 14);
+    AddText(Stack, TEXT("Front / Left / Right relative to buggy forward. Edit from measured physical mounts. Applying clears old map points."), 11, VizStyle::Muted);
+    for (int32 i=0;i<3;++i)
+    {
+        MountInputs[i] = WidgetTree->ConstructWidget<UEditableTextBox>();
+        MountInputs[i]->SetHintText(FText::FromString(i==0 ? TEXT("Front deg") : (i==1 ? TEXT("Left deg") : TEXT("Right deg"))));
+        MountInputs[i]->SetText(FText::AsNumber(i==0 ? 0 : (i==1 ? 55 : -55)));
+        UVerticalBoxSlot* InputSlot = Stack->AddChildToVerticalBox(MountInputs[i]);
+        InputSlot->SetPadding(FMargin(0, 2, 0, 4));
+    }
+    AddButton(Stack, TEXT("APPLY SENSOR MOUNT ANGLES"))->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnApplyMountAngles);
+    AddButton(Stack, TEXT("RESTORE ASSUMED 0 / 55 / -55"))->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnResetMountAngles);
+    CalibrationText = AddText(Stack, TEXT("Mount angles are UNVERIFIED assumptions"), 11, VizStyle::Orange);
 
     AddText(Stack, TEXT("WORKSPACE"), 14, VizStyle::White, 16);
+    ScenarioText = AddText(Stack, TEXT("SCENARIO: ARENA"), 12, VizStyle::Blue);
+    AddButton(Stack, TEXT("NEXT TEST ENVIRONMENT"))->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnCycleScenario);
     UButton* Demo = AddButton(Stack, TEXT("SWITCH TO LIVE STREAM"));
     Demo->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnToggleDemo);
     DemoButtonText = Cast<UTextBlock>(Demo->GetChildAt(0));
@@ -165,6 +193,18 @@ void UBuggyVizDashboard::Refresh()
     else if (Age < 2.0) Link = FString::Printf(TEXT("STREAM RECEIVING  |  %d accepted"), Visualizer->GetPacketCount());
     else Link = FString::Printf(TEXT("NO RECENT DATA  |  %.1fs since last packet"), FMath::Min(Age, 999.0));
     LinkText->SetText(FText::FromString(Link));
+    DiagnosticsText->SetText(FText::FromString(FString::Printf(TEXT("PACKETS  %d ACCEPTED  /  %d REJECTED  /  %d Hz"),
+        Visualizer->GetPacketCount(), Visualizer->GetRejectedPacketCount(), Visualizer->GetRecentPacketRateHz())));
+    const float Nearest = Visualizer->GetClosestValidRangeMm();
+    const FString Alert = Nearest < 0 ? TEXT("RANGE UNKNOWN - NOT CLEAR") :
+        (Nearest < 250 ? FString::Printf(TEXT("CLOSE OBJECT  /  %.0f mm - BENCH ONLY"), Nearest) :
+        (Nearest < 550 ? FString::Printf(TEXT("NEAR OBJECT  /  %.0f mm"), Nearest) :
+            FString::Printf(TEXT("NEAREST VALID HIT  /  %.0f mm"), Nearest)));
+    ProximityText->SetText(FText::FromString(Alert));
+    ProximityText->SetColorAndOpacity(FSlateColor(Nearest < 0 || Nearest < 550 ? VizStyle::Orange : VizStyle::Lime));
+    if (ScenarioText)
+        ScenarioText->SetText(FText::FromString(FString::Printf(TEXT("TEST SCENE  /  %s"),
+            *Visualizer->GetDemoScenarioName())));
     PoseText->SetText(FText::FromString(FString::Printf(TEXT("LOCAL X %.2f m  /  Y %.2f m  /  YAW %.1f deg"),
         Visualizer->GetActorLocation().X / 100.f, Visualizer->GetActorLocation().Y / 100.f, Visualizer->GetHeadingDegrees())));
     MapText->SetText(FText::FromString(FString::Printf(TEXT("POINTS  %d  /  MAX %d    |    %s"),
@@ -191,6 +231,11 @@ void UBuggyVizDashboard::Refresh()
             : FString::Printf(TEXT("%s  ---- mm  /  NO VALID HIT"), Names[i]);
         Widgets[i]->SetText(FText::FromString(Value));
         Widgets[i]->SetColorAndOpacity(FSlateColor(Valid ? VizStyle::Lime : VizStyle::Orange));
+        if (SensorBars[i])
+        {
+            const float Percent = Valid ? 1.f-FMath::Clamp(Mm/2000.f,0.f,1.f) : 0.f;
+            SensorBars[i]->SetPercent(Percent);
+        }
     }
     if (DemoButtonText)
         DemoButtonText->SetText(FText::FromString(Demo ? TEXT("SWITCH TO LIVE STREAM") : TEXT("SWITCH TO DEMO")));
@@ -201,6 +246,37 @@ void UBuggyVizDashboard::Refresh()
     if (TruthButtonText)
         TruthButtonText->SetText(FText::FromString(Visualizer->IsDemoGeometryVisible() ? TEXT("HIDE DEMO GEOMETRY") : TEXT("SHOW DEMO GEOMETRY")));
     if (ExportText) ExportText->SetText(FText::FromString(Visualizer->GetExportStatus()));
+}
+void UBuggyVizDashboard::OnCycleScenario()
+{
+    if (Visualizer && Visualizer->IsDemoMode()) Visualizer->CycleDemoScenario();
+    Refresh();
+}
+void UBuggyVizDashboard::OnApplyMountAngles()
+{
+    if (!Visualizer) return;
+    float Values[3] = {0,0,0};
+    for (int32 i=0;i<3;++i)
+    {
+        if (!MountInputs[i] || !FDefaultValueHelper::ParseFloat(MountInputs[i]->GetText().ToString(), Values[i]) ||
+            !FMath::IsFinite(Values[i]) || FMath::Abs(Values[i])>180)
+        {
+            CalibrationText->SetText(FText::FromString(TEXT("INVALID ANGLE: use numbers -180 to +180")));
+            return;
+        }
+    }
+    if (Visualizer->SetMountAngles(Values[0],Values[1],Values[2]))
+        CalibrationText->SetText(FText::FromString(TEXT("Mounted bearings applied; old points cleared. Verify physical orientation.")));
+    else
+        CalibrationText->SetText(FText::FromString(TEXT("Angle calibration failed")));
+}
+void UBuggyVizDashboard::OnResetMountAngles()
+{
+    if (!Visualizer) return;
+    Visualizer->SetMountAngles(0,55,-55);
+    for (int32 i=0;i<3;++i)
+        if (MountInputs[i]) MountInputs[i]->SetText(FText::AsNumber(Visualizer->GetMountAngle(i)));
+    CalibrationText->SetText(FText::FromString(TEXT("ASSUMED angles restored; NOT calibrated to hardware")));
 }
 void UBuggyVizDashboard::OnToggleDemo() { if (Visualizer) Visualizer->SetDemoMode(!Visualizer->IsDemoMode()); Refresh(); }
 void UBuggyVizDashboard::OnTogglePause() { if (Visualizer) Visualizer->SetPaused(!Visualizer->IsPaused()); Refresh(); }
