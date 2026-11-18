@@ -266,3 +266,32 @@ class TestStudioTk:
         assert self.app._key_down(E()) is None
         assert not self.app.pressed
         top.destroy()
+
+def test_four_higher_output_gears_are_distinct_and_bounded():
+    from route_planner import GEARS, PRECISION_GEARS
+    assert GEARS == {1: 215, 2: 230, 3: 243, 4: 255}
+    assert PRECISION_GEARS == {1: 200, 2: 218, 3: 235, 4: 255}
+    assert sorted(GEARS.values()) == list(GEARS.values())
+    assert sorted(PRECISION_GEARS.values()) == list(PRECISION_GEARS.values())
+    assert len(set(GEARS.values())) == 4
+    assert all(PRECISION_GEARS[g] <= GEARS[g] <= 255 for g in GEARS)
+    assert all(PRECISION_GEARS[g] >= 200 for g in GEARS)
+
+def test_studio_manual_pwm_selects_actual_profile_without_live_bluetooth():
+    from types import SimpleNamespace
+    from app import BuggyApp
+    from route_planner import GEARS, PRECISION_GEARS
+    app = BuggyApp.__new__(BuggyApp)
+    for precision in (False, True):
+        app.precision_var = SimpleNamespace(get=lambda p=precision: p)
+        for gear in range(1, 5):
+            app.gear = gear
+            assert app._manual_pwm() == (PRECISION_GEARS if precision else GEARS)[gear]
+
+def test_both_channels_receive_same_high_output_for_straight_drive():
+    from motor_control import manual_wheels
+    from route_planner import GEARS, PRECISION_GEARS
+    for profile in (GEARS, PRECISION_GEARS):
+        for gear, duty in profile.items():
+            assert manual_wheels({"W"}, duty, 50) == (duty, duty)
+            assert manual_wheels({"S"}, duty, 50) == (-duty, -duty)
