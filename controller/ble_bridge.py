@@ -54,6 +54,8 @@ class BLEBridge:
         self._emergency_send_pending = False
         self._last_write_seconds = 0.0
         self._last_slow_warning_at = 0.0
+        self._version_confirmed = False  # reset for every new BLE session
+        self._pulse_active = False
 
     def _thread_main(self):
         asyncio.set_event_loop(self.loop)
@@ -237,6 +239,9 @@ class BLEBridge:
             self.char = target
             self._tx_count = 0
             self._rx_partial.clear()
+            with self._lock:
+                self._version_confirmed = False
+                self._pulse_active = False
             if 'notify' in target.properties:
                 try:
                     await client.start_notify(target, self._notification)
@@ -283,6 +288,11 @@ class BLEBridge:
             line, _, rest = self._rx_partial.partition(b'\n')
             self._rx_partial = bytearray(rest)
             message = line.decode('ascii', errors='ignore').strip()
+            if message == 'V,165':
+                with self._lock:
+                    self._version_confirmed = True
+                self.events.put(('firmware_version', 165))
+                continue
             if message == 'H,13':
                 self.events.put(('firmware_reply', ('1.3', time.monotonic())))
                 continue
@@ -300,6 +310,7 @@ class BLEBridge:
             self._brake = True
             self._emergency_latched = True
             self._safety_epoch += 1
+            self._version_confirmed = False
             self._updated = time.monotonic()
         self.events.put(('lost', 'Bluetooth connection closed'))
 
@@ -312,6 +323,10 @@ class BLEBridge:
         """
         async with self._write_lock:
             with self._lock:
+                # Wheel Doctor owns the UART exclusively until K/X is sent.
+                # A routine idle K must not interrupt an isolated motor pulse.
+                if getattr(self, '_pulse_active', False):
+                    return
                 left, right = self._motor
                 now_braking = self._brake
                 age = time.monotonic() - self._updated
@@ -349,7 +364,13 @@ class BLEBridge:
     async def _stream(self):
         try:
             while self.client and self.client.is_connected:
-                # _send computes current state only once it gets the lock.
+                with self._lock:
+                    bench_pulse = getattr(self, '_pulse_active', False)
+                if bench_pulse:
+                    # Only the guarded pulse task may own the BLE write channel.
+                    await asyncio.sleep(0.05)
+                    continue
+                # _send independently checks the guard after taking the UART lock.
                 await self._send()
                 self._tx_count += 1
                 if time.monotonic() - self._last_tx_report > 0.5:
@@ -399,6 +420,100 @@ class BLEBridge:
                 await asyncio.sleep(0.4)
         except Exception as exc:
             self.events.put(('probe_error', str(exc)))
+
+
+    def probe_version(self):
+        """Non-driving v1.6.5 capability query; do not infer support from H,13."""
+        if self.client is None or not self.client.is_connected or self.char is None:
+            self.events.put(('version_error', 'Connect to a BLE UART first'))
+            return
+        self._schedule(self._probe_version())
+
+    async def _probe_version(self):
+        try:
+            async with self._write_lock:
+                if not self.client or not self.client.is_connected:
+                    return
+                await asyncio.wait_for(
+                    self.client.write_gatt_char(self.char, b'V\n', response=self.write_response),
+                    timeout=GATT_WRITE_TIMEOUT_S)
+            self.events.put(('version_query', 'Sent V query; awaiting V,165'))
+        except Exception as exc:
+            self.events.put(('version_error', f'Firmware capability query failed: {exc}'))
+
+    def pulse_wheel(self, left: int, right: int, duration_s: float = 0.45):
+        """Opt-in, bounded live motor pulse, NOT automatic wheel verification.
+
+        Caller checks raised wheels and battery cutoff; BLE additionally demands
+        a fresh V,165 version reply and a latched E-stop. No live route or manual
+        drive should be active during this diagnostic operation.
+        """
+        left, right = int(left), int(right)
+        if max(abs(left), abs(right)) > 150 or not (0.1 <= duration_s <= 0.45):
+            self.events.put(('wheel_pulse_done', 'REJECTED: invalid pulse parameters'))
+            return False
+        with self._lock:
+            if self._pulse_active:
+                return False
+            self._pulse_active = True
+            epoch = self._safety_epoch
+        self._schedule(self._pulse_wheel(left, right, duration_s, epoch))
+        return True
+
+    async def _pulse_wheel(self, left: int, right: int, duration_s: float, epoch: int):
+        error = None
+        client = self.client
+        try:
+            async with self._write_lock:
+                with self._lock:
+                    ready = (self._version_confirmed and self._emergency_latched and
+                             self._brake and self._safety_epoch == epoch)
+                if not ready or client is None or not client.is_connected or self.char is None:
+                    raise RuntimeError('requires a current V,165 reply and latched E-stop')
+                # Explicitly clear Arduino X, then the watchdog/zero-frame latch.
+                # This sequence never trusts old firmware: V,165 is mandatory.
+                for payload in (b'U\n', b'M,0,0\n'):
+                    await asyncio.wait_for(client.write_gatt_char(
+                        self.char, payload, response=self.write_response),
+                        timeout=GATT_WRITE_TIMEOUT_S)
+                deadline = time.monotonic() + duration_s
+                while time.monotonic() < deadline:
+                    with self._lock:
+                        if self._safety_epoch != epoch:
+                            raise RuntimeError('cancelled by emergency stop')
+                    if not client.is_connected:
+                        raise RuntimeError('Bluetooth link lost during pulse')
+                    await asyncio.wait_for(client.write_gatt_char(
+                        self.char, f'M,{left},{right}\n'.encode('ascii'),
+                        response=self.write_response), timeout=GATT_WRITE_TIMEOUT_S)
+                    await asyncio.sleep(min(0.08, max(0.0, deadline - time.monotonic())))
+        except Exception as exc:
+            error = str(exc)
+        finally:
+            # Stop and relatch even if a GATT write, focus event or connection failed.
+            # If BLE has been lost, the firmware watchdog and physical cutoff remain
+            # the only protection; the GUI must never claim a confirmed wheel stop.
+            with self._lock:
+                self._motor = (0, 0)
+                self._brake = True
+                self._emergency_latched = True
+                self._updated = time.monotonic()
+            try:
+                if client is not None and client.is_connected and self.char is not None:
+                    async with self._write_lock:
+                        for payload in (b'K\n', b'X\n'):
+                            await asyncio.wait_for(
+                                client.write_gatt_char(self.char, payload,
+                                                       response=self.write_response),
+                                timeout=GATT_WRITE_TIMEOUT_S)
+            except Exception as exc:
+                error = (error + '; ' if error else '') + 'Stop write failed: ' + str(exc)
+            with self._lock:
+                self._pulse_active = False
+            self.events.put(('wheel_pulse_done',
+                             ('TRANSPORT ERROR: ' + error + '; cut motor power and inspect' if error
+                              else 'Test command window ended; K/X brake requested. '
+                                   'Observe actual wheel motion and stopping manually.')))
 
     def disconnect(self):
         self.set_brake()

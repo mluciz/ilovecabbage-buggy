@@ -132,6 +132,15 @@ int main() {
     assert(!handshakePending);
     assert(BT.output.find("H,13") != std::string::npos);
 
+    // V,165 is a safe capability query required before GUI bench pulses.
+    BT.output.clear();
+    ble("K\n");
+    ble("V\n");
+    assert(versionPending);
+    advance(RX_QUIET_MS + 1);
+    assert(!versionPending);
+    assert(BT.output.find("V,165") != std::string::npos);
+
     std::cout << "firmware simulation: parser isolation, reversal interlock, emergency latch, "
                  "watchdog, brake, channels and telemetry PASS\n";
 }

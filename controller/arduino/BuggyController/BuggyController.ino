@@ -24,6 +24,8 @@
   These are the driver PWM COMMANDS, NOT wheel-speed measurements.
   Requires a BLE characteristic supporting notifications (typically FFE1).
 
+  V command (safe / stationary): response V,165 enables guarded diagnostics.
+
   WARNING: The label "cabbagelover" in the app does NOT rename your HM-10.
 */
 
@@ -78,6 +80,7 @@ struct FrameBuffer {
 FrameBuffer bleFrame = {};
 FrameBuffer usbFrame = {};
 bool handshakePending = false;
+bool versionPending = false;
 bool eStopLatched = false;
 bool reversalPending = false;
 int pendingLeft = 0;
@@ -251,6 +254,10 @@ void receiveByte(char value, FrameBuffer &frame, bool usbDebug) {
   } else if (value == 'Q') {
     handshakePending = true;
     Serial.println(F("H,13"));
+  } else if (value == 'V') {
+    // Explicit capability proof. Legacy sketches don't respond to V.
+    versionPending = true;
+    if (usbDebug) Serial.println(F("V,165"));
   } else if (usbDebug && !eStopLatched) {
     // Legacy drive bytes remain local USB only.
     legacyByte(value);
@@ -329,6 +336,9 @@ void loop() {
     if (handshakePending) {
       handshakePending = false;
       BT.println(F("H,13"));
+    } else if (versionPending) {
+      versionPending = false;
+      BT.println(F("V,165"));
     } else if (millis() - lastTelemetry >= TELEMETRY_MS) {
       lastTelemetry = millis();
       sendTelemetry();

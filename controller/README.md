@@ -1,3 +1,27 @@
+# Buggy Control Center — v1.7 Wheel Doctor Field Lab (development candidate)
+
+**This is an unmerged candidate built on the v1.6.5-safety pull-request branch, not the stable v1.6.4 download. No one has certified these changes on a physical buggy. Do not drive on the floor until both independent wheels and braking pass the physical check.** Keep your existing v1.6.4 files for rollback.
+
+### New guided diagnosis
+
+- Press **F1** or click **PIN + WHEEL HELP [F1]** at the top of the Windows GUI to launch **Wheel Doctor**.
+- **SOURCE PIN AUDIT** cross-checks both Arduino sketches, Uno D4–D10, SoftwareSerial D2/D3, the Windows BLE packet order and firmware motor A/B mapping. This checks source code only, **not real wires**.
+- **PROBE FIRMWARE** asks for a **V,165** response. If missing, app-driven motor pulses stay disabled to protect against older firmware without the X-latch protocol.
+- Only with **wheels raised**, immediate **physical motor-battery cutoff** and both safety confirmations can you click an individual **TEST 0.45s** button. Each pulse is limited to PWM 150 and requests **K + X braking**, with Escape/Stop cancelling it. Bluetooth delays/watchdog mean the physical switch is still necessary.
+- Record human-observed LEFT/RIGHT FORWARD/REVERSE + BOTH results, click **DIAGNOSE RESULTS**, then COPY or SAVE the fault report. Without wheel sensors, the app cannot declare any actual wheel passed based on telemetry.
+- If Bluetooth is unreliable or the firmware version cannot be checked, flash the standalone **MotorTest.ino** and send individual digits **1–6** in Serial Monitor (9600 baud). **T** runs all six; **X/S** abort. Restore the main firmware afterwards.
+- The ordinary **DIAGNOSTICS** window also now performs an automatic code-level source audit, with an expanded physical pin checklist.
+
+Start here for wiring, isolation, compatibility and safety: **[WHEEL_DOCTOR_FIELD_GUIDE.md](WHEEL_DOCTOR_FIELD_GUIDE.md)**.
+
+### How to run and check (not hardware certification)
+
+Install Python 3.11+ with Tkinter. On Windows run `run.bat` for real BLE or `demo.bat` for a no-motor simulation. From the `controller` folder run `python -m pytest -q`. Arduino Uno compilation is checked by GitHub Actions if the workflow succeeds. Replace the Uno sketch with this branch's `arduino/BuggyController/BuggyController.ino` only after powering OFF the motor battery. Existing older firmware deliberately cannot use the new GUI's live pulse test.
+
+---
+
+## Historical v1.6.4 controller documentation (stable release)
+
 # Buggy Control Center v1.6.4 — Drive Priority
 
 This is the complete Windows desktop controller **and** matching Arduino Uno firmware for the TB6612FNG/HM-10 buggy. Built on v1.6.3 with a safer command-first UART policy, bounded BLE writes, offline link stress simulation and Precision drive. See `CHANGELOG_v1.6.4.md` for the current changes.

@@ -9,7 +9,8 @@ def test_watchdog_is_still_enabled():
 
 def test_transport_is_less_aggressive():
     bridge = (ROOT/'ble_bridge.py').read_text()
-    assert 'DRIVE_STREAM_INTERVAL_S = 0.12' in bridge
+    # v1.6.5 safety deliberately slowed the period to 160ms (< watchdog margin).
+    assert 'DRIVE_STREAM_INTERVAL_S = 0.16' in bridge
     assert 'if age > 0.90:' in bridge
 
 def test_keyboard_requires_confirmed_release():
