@@ -163,3 +163,46 @@ class TestStudioTk:
         assert self.app.balance_var.get() == DEFAULTS["balance"]
         assert not self.app.precision_var.get()
         assert self.app.brake_latched
+
+    def test_live_steering_and_balance_changes_brake_before_next_motor_update(self):
+        self.app.online = True
+        self.app.demo = False
+        self.app.bridge._emergency_latched = False
+        self.app.bridge.set_brake = lambda: None
+        self.app._pressed_sources['W'].add('keyboard')
+        self.app.pressed.add('W')
+        self.app.brake_latched = False
+        self.app.steering_var.set(84)
+        assert self.app.brake_latched is True
+        assert self.app.pressed == set()
+        self.app._pressed_sources['W'].add('keyboard')
+        self.app.pressed.add('W')
+        self.app.brake_latched = False
+        self.app.balance_var.set(19)
+        assert self.app.brake_latched is True
+        assert self.app.pressed == set()
+
+    def test_gear_change_during_real_route_brakes_and_ends_route(self):
+        self.app.online = True
+        self.app.demo = False
+        self.app.bridge._emergency_latched = False
+        self.app.bridge.set_brake = lambda: None
+        self.app.running = True
+        self.app.brake_latched = False
+        self.app.set_gear(4 if self.app.gear != 4 else 2)
+        assert self.app.running is False
+        assert self.app.brake_latched is True
+
+    def test_system_workspace_rejects_drive_and_gear_shortcuts(self):
+        self.app._navigate('system')
+        gear = self.app.gear
+        class E:
+            keysym = '3'
+            char = '3'
+            widget = self.app.drive_panel
+        assert self.app._key_down(E()) == 'break'
+        assert self.app.gear == gear
+        E.keysym = 'w'
+        E.char = 'w'
+        assert self.app._key_down(E()) == 'break'
+        assert not self.app.pressed
