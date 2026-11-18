@@ -46,6 +46,7 @@ public:
     float GetClosestValidRangeMm() const;
     float GetMountAngle(int32 Index) const;
     bool SetMountAngles(float Front, float Left, float Right);
+    const FString& GetCalibrationStatus() const { return CalibrationStatus; }
     int32 GetDemoScenario() const { return DemoScenarioIndex; }
     FString GetDemoScenarioName() const;
     void CycleDemoScenario();
@@ -82,6 +83,8 @@ private:
         FVector HalfSize = FVector::ZeroVector;
         TWeakObjectPtr<AStaticMeshActor> Visual;
     };
+    void LoadMountCalibration();
+    void SaveMountCalibration();
     void ReceivePackets();
     void ApplyPacket(const FString& Payload);
     void UpdateDemo(float DeltaTime);
@@ -130,4 +133,5 @@ private:
     bool bShowDemoGeometry = true;
     bool bExternalPose = false;
     FString LastExportStatus = TEXT("No CSV exported in this session");
+    FString CalibrationStatus = TEXT("Default unverified angles");
 };
