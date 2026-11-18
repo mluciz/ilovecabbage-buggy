@@ -142,3 +142,27 @@ def test_fragmented_version_response_requires_complete_line():
     bridge._notification(None, b"65\n")
     assert bridge._version_confirmed is True
     assert bridge.events.get_nowait() == ("firmware_version", 165)
+
+
+
+def test_normal_ble_stream_cannot_insert_brake_during_wheel_pulse():
+    async def run():
+        bridge = mock_bridge(version=True)
+        # Background stream must not introduce K between U and isolated M.
+        bridge._last_tx_report = time.monotonic()
+        bridge._tx_count = 0
+        bridge._last_write_seconds = 0.0
+        bridge._last_slow_warning_at = 0.0
+        task = asyncio.create_task(bridge._stream())
+        await asyncio.sleep(0.12)
+        assert bridge.client.sent == []
+        await bridge._pulse_wheel(0, 150, 0.12, 17)
+        assert bridge.client.sent[:2] == [b"U\n", b"M,0,0\n"]
+        assert bridge.client.sent[-2:] == [b"K\n", b"X\n"]
+        # Background frame can be sent after the explicit K/X finalization only.
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    asyncio.run(run())
