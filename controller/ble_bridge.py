@@ -440,8 +440,6 @@ class BLEBridge:
         """
         left, right = int(left), int(right)
         if max(abs(left), abs(right)) > 150 or not (0.1 <= duration_s <= 0.45):
-            with self._lock:
-                self._pulse_active = False
             self.events.put(('wheel_pulse_done', 'REJECTED: invalid pulse parameters'))
             return False
         with self._lock:
@@ -500,6 +498,8 @@ class BLEBridge:
                                 timeout=GATT_WRITE_TIMEOUT_S)
             except Exception as exc:
                 error = (error + '; ' if error else '') + 'Stop write failed: ' + str(exc)
+            with self._lock:
+                self._pulse_active = False
             self.events.put(('wheel_pulse_done',
                              ('TRANSPORT ERROR: ' + error + '; cut motor power and inspect' if error
                               else 'Test command window ended; K/X brake requested. '
