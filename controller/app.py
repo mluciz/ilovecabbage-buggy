@@ -18,6 +18,7 @@ from wheel_doctor import audit_sources
 from premium_visuals import render_drive, render_link_health, command_label
 from operator_preferences import load_preferences, save_preferences, DEFAULTS
 from power_path_window import PowerPathWindow
+from preflight_window import PreflightWindow
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
@@ -87,6 +88,7 @@ class BuggyApp:
         self.diagnostic_window = None
         self.wheel_doctor_window = None
         self.power_path_window = None
+        self.preflight_window = None
         self.wheel_probe_active = False
         self.firmware_version = 0
         self.diag_phase = 'idle'
@@ -260,6 +262,8 @@ class BuggyApp:
                      color='#225d60', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'POWER PATH LAB', self.open_power_path,
                      color='#305b70', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'QUICK PREFLIGHT', self.open_preflight,
+                     color='#344e73', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'FULL DIAGNOSIS', self.open_diagnostics,
                      color='#344e73', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'BRAKE / ESC', self.emergency_stop,
@@ -338,6 +342,7 @@ class BuggyApp:
             ('RUN FULL DIAGNOSIS', self.open_diagnostics, '#286283'),
             ('WHEEL DOCTOR  /  F1', self.open_wheel_doctor, '#167e78'),
             ('POWER PATH LAB', self.open_power_path, '#345f77'),
+            ('QUICK PREFLIGHT', self.open_preflight, '#2d756a'),
             ('OFFLINE CONTROL CHECK', self.run_offline_check, '#344d76'),
             ('LINK STRESS SIMULATOR', self.run_link_stress_check, '#344d76'),
         )):
@@ -661,6 +666,19 @@ class BuggyApp:
         else:
             self.diagnostic_window.top.lift()
             self.diagnostic_window.top.focus_force()
+
+    def open_preflight(self):
+        # Preflight is non-driving. A real BLE link must be disconnected first.
+        if self.online and not self.demo:
+            self.emergency_stop(quiet=True)
+            messagebox.showwarning('Disconnect motor link first',
+                'Preflight runs only in simulator or disconnected mode. '
+                'The emergency stop has been requested; disconnect BLE before continuing.')
+            return
+        if self.preflight_window is None:
+            self.preflight_window = PreflightWindow(self)
+        else:
+            self.preflight_window.top.lift()
 
     def open_power_path(self):
         # Source-power troubleshooting never deliberately commands motors.
