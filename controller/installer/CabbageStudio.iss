@@ -32,7 +32,7 @@ Compression=lzma2
 SolidCompression=yes
 SetupLogging=yes
 UsePreviousAppDir=yes
-CloseApplications=yes
+CloseApplications=no
 RestartApplications=no
 ChangesEnvironment=no
 
