@@ -51,8 +51,8 @@ def test_packaging_is_genuinely_windowed_and_has_installer_artifact():
     assert "--onefile" in text
     assert "branding/CabbageStudio.ico" in text
     assert "installer/CabbageStudio.iss" in text
-    assert "CABBAGE-Studio-v1.8.2-Windows-INSTALLER-LIVE" in text
-    assert "CABBAGE-Studio-v1.8.2-PORTABLE-WITH-SPATIAL-LAB" in text
+    assert "CABBAGE-Studio-v1.8.3-Windows-INSTALLER-FAST-GEARS" in text
+    assert "CABBAGE-Studio-v1.8.3-PORTABLE-WITH-SPATIAL-LAB" in text
     assert 'Copy-Item -Path "../unreal-visualizer"' in text
     assert 'dist/portable/unreal-visualizer/BuggySensorViz.uproject' in text
     assert 'tests/test_spatial_lab_launcher.py' in text
