@@ -117,6 +117,9 @@ class TestStudioTk:
         self.app.bridge._emergency_latched = False
         self.app.bridge.set_motor = lambda l, r: None
         self.app.bridge.set_brake = lambda: None
+        # Focus is still inside the drive workspace; losing focus deliberately
+        # clears ALL key state as a separate fail-safe.
+        self.root.focus_displayof = lambda: self.app.drive_panel
         self.app._pressed_sources["W"].add("keyboard")
         self.app.pressed.add("W")
         self.app._press_combo(("W", "A"))
