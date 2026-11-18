@@ -26,7 +26,7 @@ namespace
     };
 }
 UStaticMeshComponent* ABuggyTelemetryActor::MakeMesh(
-    AActor* Owner, USceneComponent* Parent, const FName& Name, const FVector& Offset, const FVector& Scale)
+    ABuggyTelemetryActor* Owner, USceneComponent* Parent, const FName& Name, const FVector& Offset, const FVector& Scale)
 {
     // Called only from the actor constructor; default subobjects serialize without asset files.
     UStaticMeshComponent* Part = Owner->CreateDefaultSubobject<UStaticMeshComponent>(Name);
@@ -93,6 +93,9 @@ void ABuggyTelemetryActor::SetDemoMode(bool bEnabled)
     DemoTimeSeconds = 0;
     SetActorLocation(FVector::ZeroVector);
     EstimatedYawDegrees = 0;
+    PitchDegrees = 0;
+    RollDegrees = 0;
+    bHaveImu = false;
     ClearObservations();
     for (FSensorReading& Reading : Readings) Reading = FSensorReading();
     SetDemoGeometryVisibility();
@@ -199,24 +202,48 @@ void ABuggyTelemetryActor::ApplyPacket(const FString& Payload)
             FMath::Abs(X) > 50 || FMath::Abs(Y) > 50 || FMath::Abs(Yaw) > 36000)
         { ++RejectedPacketCount; return; }
     }
-    else
-    {
-        const TSharedPtr<FJsonObject>* Imu = nullptr;
-        if (Root->TryGetObjectField(TEXT("imu"), Imu))
-        {
-            double Z = 0, Dt = 0;
-            if ((*Imu)->TryGetNumberField(TEXT("gyro_z_dps"), Z) &&
-                (*Imu)->TryGetNumberField(TEXT("dt_s"), Dt) &&
-                FMath::IsFinite(Z) && FMath::IsFinite(Dt) && Dt > 0 && Dt <= 0.2 && FMath::Abs(Z) <= 2000)
-                EstimatedYawDegrees = FMath::UnwindDegrees(EstimatedYawDegrees + (float)(Z * Dt));
-        }
     }
+    const TSharedPtr<FJsonObject>* Imu = nullptr;
+    if (Root->TryGetObjectField(TEXT("imu"), Imu))
+    {
+        double GX=0, GY=0, GZ=0, AX=0, AY=0, AZ=0, Dt=0;
+        const bool bOK = (*Imu)->TryGetNumberField(TEXT("gyro_x_dps"), GX) &&
+            (*Imu)->TryGetNumberField(TEXT("gyro_y_dps"), GY) &&
+            (*Imu)->TryGetNumberField(TEXT("gyro_z_dps"), GZ) &&
+            (*Imu)->TryGetNumberField(TEXT("accel_x_g"), AX) &&
+            (*Imu)->TryGetNumberField(TEXT("accel_y_g"), AY) &&
+            (*Imu)->TryGetNumberField(TEXT("accel_z_g"), AZ) &&
+            (*Imu)->TryGetNumberField(TEXT("dt_s"), Dt) &&
+            FMath::IsFinite(GX) && FMath::IsFinite(GY) && FMath::IsFinite(GZ) &&
+            FMath::IsFinite(AX) && FMath::IsFinite(AY) && FMath::IsFinite(AZ) &&
+            FMath::IsFinite(Dt) && Dt > 0 && Dt <= 0.2 &&
+            FMath::Abs(GX) <= 2000 && FMath::Abs(GY) <= 2000 && FMath::Abs(GZ) <= 2000 &&
+            FMath::Abs(AX) <= 16 && FMath::Abs(AY) <= 16 && FMath::Abs(AZ) <= 16;
+        if (!bOK) { ++RejectedPacketCount; return; }
+        LastGyroscopeDps = FVector((float)GX, (float)GY, (float)GZ);
+        LastAccelerometerG = FVector((float)AX, (float)AY, (float)AZ);
+        bHaveImu = true;
+        if (!bHasPose) EstimatedYawDegrees = FMath::UnwindDegrees(EstimatedYawDegrees + (float)(GZ * Dt));
+        float RollPrediction = RollDegrees + (float)(GX * Dt);
+        float PitchPrediction = PitchDegrees + (float)(GY * Dt);
+        const double GravityMag = FMath::Sqrt(AX*AX + AY*AY + AZ*AZ);
+        if (GravityMag > .75 && GravityMag < 1.25)
+        {
+            const float AccRoll = FMath::RadiansToDegrees(FMath::Atan2((float)AY,(float)AZ));
+            const float AccPitch = FMath::RadiansToDegrees(FMath::Atan2((float)-AX,(float)FMath::Sqrt(AY*AY+AZ*AZ)));
+            RollPrediction = FMath::Lerp(RollPrediction, AccRoll, .035f);
+            PitchPrediction = FMath::Lerp(PitchPrediction, AccPitch, .035f);
+        }
+        RollDegrees = FMath::Clamp(RollPrediction, -75.f, 75.f);
+        PitchDegrees = FMath::Clamp(PitchPrediction, -75.f, 75.f);
+    }
+    else bHaveImu = false;
     if (bHasPose)
     {
         SetActorLocation(FVector((float)(X * 100.0), (float)(Y * 100.0), 0.0f));
         EstimatedYawDegrees = FMath::UnwindDegrees((float)Yaw);
     }
-    SetActorRotation(FRotator(0, EstimatedYawDegrees, 0));
+    SetActorRotation(FRotator(PitchDegrees, EstimatedYawDegrees, RollDegrees));
     bExternalPose = bHasPose;
     const double Now = FPlatformTime::Seconds();
     for (int32 i=0;i<3;++i)
@@ -238,7 +265,9 @@ float ABuggyTelemetryActor::SensorYaw(int32 Index) const
 FVector ABuggyTelemetryActor::SensorDirection(int32 Index) const
 {
     const float Heading = FMath::DegreesToRadians(EstimatedYawDegrees + SensorYaw(Index));
-    return FVector(FMath::Cos(Heading), FMath::Sin(Heading), 0);
+    // Rotate the configured ToF direction by the visualized 3D attitude (tilt included).
+    const float LocalHeading = FMath::DegreesToRadians(SensorYaw(Index));
+    return GetActorRotation().RotateVector(FVector(FMath::Cos(LocalHeading), FMath::Sin(LocalHeading), 0)).GetSafeNormal();
 }
 void ABuggyTelemetryActor::RecordObservation(int32 Index, float Mm, double Now)
 {
@@ -288,6 +317,11 @@ void ABuggyTelemetryActor::UpdateDemo(float DeltaTime)
     SetActorRotation(FRotator(0, EstimatedYawDegrees, 0));
     const double Now = FPlatformTime::Seconds();
     bExternalPose = true; // Known synthetic ground-truth pose, not measured.
+    bHaveImu = true;
+    LastAccelerometerG = FVector(0,0,1);
+    LastGyroscopeDps = FVector(0,0,3.64f * FMath::Cos(DemoTimeSeconds * .28f));
+    PitchDegrees = 0;
+    RollDegrees = 0;
     for (int32 i=0; i<3; ++i)
     {
         const FVector Start = SensorOrigin(i);
