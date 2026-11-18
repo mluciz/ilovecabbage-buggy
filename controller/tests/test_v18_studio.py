@@ -237,3 +237,17 @@ class TestStudioTk:
         assert self.app._key_down(E()) is None
         assert not self.app.pressed
         widget.destroy()
+
+    def test_searchable_operator_guide_opens_after_safety_brake(self):
+        self.app.demo_var.set(True)
+        self.app.toggle_connection()
+        self.app._press_combo(("W", "D"))
+        assert self.app.pressed
+        self.app.open_guide()
+        assert self.app.brake_latched
+        assert not self.app.pressed
+        assert self.app.guide_window is not None
+        self.app.guide_window.search_text.set("D6")
+        assert self.app.guide_window.find_next()
+        self.app.guide_window.close()
+        assert self.app.guide_window is None
