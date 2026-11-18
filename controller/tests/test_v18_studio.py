@@ -206,3 +206,18 @@ class TestStudioTk:
         E.char = 'w'
         assert self.app._key_down(E()) == 'break'
         assert not self.app.pressed
+
+    def test_mouse_release_is_atomic_no_transient_pivot_frame(self):
+        self.app.online = True
+        self.app.demo = False
+        self.app.bridge._emergency_latched = False
+        frames = []
+        self.app.bridge.set_motor = lambda l, r: frames.append(("M", l, r))
+        self.app.bridge.set_brake = lambda: frames.append(("K",))
+        self.root.focus_displayof = lambda: self.app.drive_panel
+        self.app._press_combo(("W", "A"))
+        assert len(frames) == 1
+        self.app._clear_button_drive()
+        assert frames[-1] == ("K",)
+        assert len(frames) == 2
+        assert self.app.pressed == set()
