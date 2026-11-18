@@ -74,7 +74,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: CABBAGE-Studio-v1.8.2-Windows-INSTALLER-LIVE
-          path: controller/dist/installer/CabbageControlStudio-v1.8.1-Setup-SpatialLab-CANDIDATE.exe
+          path: controller/dist/installer/CabbageControlStudio-v1.8.2-Setup-LiveBuggy-CANDIDATE.exe
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@v4
