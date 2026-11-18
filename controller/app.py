@@ -1037,12 +1037,14 @@ class BuggyApp:
                 return 'break'
         except (AttributeError, tk.TclError):
             return 'break'
+        # Entries and route-editor text always receive typed digits/letters,
+        # even outside the DRIVE workspace. Only MOTOR shortcuts are blocked.
+        if self._typing(event.widget):
+            self.last_input_var.set(f'INPUT: {key} is text input, not a motor command')
+            return
         if self._active_page != 'drive' and key in ('W', 'A', 'S', 'D', '1', '2', '3', '4'):
             self.last_input_var.set('INPUT: open DRIVE workspace and ACTIVATE WASD first')
             return 'break'
-        if self._typing(event.widget):
-            self.last_input_var.set(f'INPUT: {key} ignored — text field focused; click ACTIVATE WASD')
-            return
         self.last_input_var.set(f'INPUT: detected {key} ({event.widget.winfo_class()})')
         if key in ('W', 'A', 'S', 'D'):
             self._keyboard_pressed.add(key)
