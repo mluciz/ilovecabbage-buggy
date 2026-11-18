@@ -9,6 +9,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "Engine/DirectionalLight.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Engine/World.h"
@@ -25,6 +26,12 @@ namespace
     static const FColor SensorColors[3] = {
         FColor(109,255,169), FColor(100,192,255), FColor(255,189,103)
     };
+    static void ApplyOptionalPalette(UStaticMeshComponent* Part, const TCHAR* AssetPath)
+    {
+        if (!Part) return;
+        if (UMaterialInterface* Material = LoadObject<UMaterialInterface>(nullptr, AssetPath))
+            Part->SetMaterial(0, Material);
+    }
     static const FVector SensorOffsets[3] = {
         FVector(17,0,13), FVector(10,10,13), FVector(10,-10,13)
     };
@@ -63,6 +70,12 @@ void ABuggyTelemetryActor::BeginPlay()
         .BoundToAddress(FIPv4Address::InternalLoopback).BoundToPort(ListenPort)
         .WithReceiveBufferSize(256 * 1024);
     if (!Socket) UE_LOG(LogTemp, Error, TEXT("SpatialLab: cannot bind UDP port %d"), ListenPort);
+    ApplyOptionalPalette(Chassis, TEXT("/Game/SpatialLab/Materials/M_CabbageBody.M_CabbageBody"));
+    for (UStaticMeshComponent* Wheel : {WheelFL.Get(), WheelFR.Get(), WheelRL.Get(), WheelRR.Get()})
+        ApplyOptionalPalette(Wheel, TEXT("/Game/SpatialLab/Materials/M_Wheel.M_Wheel"));
+    ApplyOptionalPalette(ToFFront, TEXT("/Game/SpatialLab/Materials/M_ToFFront.M_ToFFront"));
+    ApplyOptionalPalette(ToFLeft, TEXT("/Game/SpatialLab/Materials/M_ToFLeft.M_ToFLeft"));
+    ApplyOptionalPalette(ToFRight, TEXT("/Game/SpatialLab/Materials/M_ToFRight.M_ToFRight"));
     BuildDemoScene();
 }
 void ABuggyTelemetryActor::EndPlay(const EEndPlayReason::Type Reason)
@@ -422,6 +435,7 @@ void ABuggyTelemetryActor::BuildDemoScene()
     UWorld* World = GetWorld();
     if (!World) return;
     UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!Cube) { UE_LOG(LogTemp, Warning, TEXT("SpatialLab: engine cube mesh unavailable")); return; }
     AStaticMeshActor* Floor = World->SpawnActor<AStaticMeshActor>(FVector(0,0,-9), FRotator::ZeroRotator);
     if (Floor)
     {
@@ -429,6 +443,7 @@ void ABuggyTelemetryActor::BuildDemoScene()
         Floor->GetStaticMeshComponent()->SetStaticMesh(Cube);
         Floor->GetStaticMeshComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Floor->SetActorScale3D(FVector(13,13,0.035f));
+        ApplyOptionalPalette(Floor->GetStaticMeshComponent(), TEXT("/Game/SpatialLab/Materials/M_Floor.M_Floor"));
     }
     ADirectionalLight* Light = World->SpawnActor<ADirectionalLight>(FVector(0,0,500), FRotator(-52,27,0));
     if (Light) Light->GetLightComponent()->SetIntensity(5.0f);
@@ -452,6 +467,7 @@ void ABuggyTelemetryActor::BuildDemoScene()
             Shape->GetStaticMeshComponent()->SetStaticMesh(Cube);
             Shape->GetStaticMeshComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
             Shape->SetActorScale3D(Halves[i] * 0.02f);
+            ApplyOptionalPalette(Shape->GetStaticMeshComponent(), TEXT("/Game/SpatialLab/Materials/M_Obstacle.M_Obstacle"));
             Obstacle.Visual = Shape;
         }
         DemoBoxes.Add(Obstacle);
@@ -518,6 +534,9 @@ void ABuggyTelemetryActor::DrawWorld()
     }
     for (const FObservedPoint& Point : Observations)
         DrawDebugPoint(World, Point.Position, 7.0f, SensorColors[Point.SensorIndex], false, 0);
+    const FVector Forward = GetActorRotation().RotateVector(FVector(1,0,0));
+    const FVector Above = GetActorLocation()+FVector(0,0,28);
+    DrawDebugDirectionalArrow(World, Above, Above+Forward*46.f, 12.f, FColor(134,255,167), false, 0, 0, 2.5f);
     if (!bShowRays) return;
     for (int32 i=0;i<3;++i)
     {
@@ -537,5 +556,12 @@ void ABuggyTelemetryActor::DrawWorld()
             DrawDebugLine(World, Start, Edge, Color, false, 0, 0, .5f);
         }
         DrawDebugSphere(World, Start, 5.0f, 8, SensorColors[i], false, 0, 0, 1.6f);
+        if (Readings[i].bValid)
+        {
+            const FString DistLabel = FString::Printf(TEXT("%s / %.0f mm"),
+                i == 0 ? TEXT("FRONT") : (i==1 ? TEXT("LEFT") : TEXT("RIGHT")),
+                Readings[i].DistanceMm);
+            DrawDebugString(World, End+FVector(0,0,12), DistLabel, nullptr, Color, 0, false, 1.0f);
+        }
     }
 }
