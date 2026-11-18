@@ -2,14 +2,14 @@
 
 ## v0.3 — Isolated Unreal sensing & experience upgrade (2026-11-18)
 - Added three demonstrator scenes (Arena, Corridor, Open Field) with independent obstacle arrays and scene reset.
-- Added native editable front/left/right mounting angles (assumptions, not automatically calibrated).
+- Added native editable front/left/right mounting angles, persisted in local `Saved/SpatialLab/mounts.json` (assumptions, not automatically calibrated).
 - Added three per-channel range bars and closest-hit diagnostic threshold labels.
 - Added accepted/rejected UDP packet counters and approximately recent 2-second packet rate.
 - Added per-point CSV quality flags retained at capture time (synthetic vs externally supplied pose vs unlocated hit).
 - Added non-destructive Unreal Editor Python asset-palette generator and optional material loading with plain-cube fallback.
 - Added in-world heading marker and per-ray range labels.
 - Added standard-library localhost UDP **session recorder, forwarder, replay and statistics**; no motor commands.
-- Added one-click doctor / session-recording helpers, three new test modules and Windows+Linux Python CI.
+- Added one-click doctor / session-recording helpers, one-click Windows Unreal 5.4 build launcher, new test modules and Windows+Linux Python CI.
 - No modifications to the existing motor controller, app release downloads or active wheel diagnostic branch.
 
 ## v0.2 — Base three-sensor prototype
