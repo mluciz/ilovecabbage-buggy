@@ -331,15 +331,18 @@ class BuggyApp:
                      fill='x', padx=17, pady=(0, 12))
         sys_actions = tk.Frame(sys_header, bg=CARD)
         sys_actions.pack(fill='x', padx=17, pady=(0, 15))
-        for title, command, color in (
+        # Compact 2-column grid: buttons never overflow at 1020px window width.
+        for column in (0, 1):
+            sys_actions.grid_columnconfigure(column, weight=1, uniform='actions')
+        for index, (title, command, color) in enumerate((
             ('RUN FULL DIAGNOSIS', self.open_diagnostics, '#286283'),
             ('WHEEL DOCTOR  /  F1', self.open_wheel_doctor, '#167e78'),
             ('POWER PATH LAB', self.open_power_path, '#345f77'),
             ('OFFLINE CONTROL CHECK', self.run_offline_check, '#344d76'),
             ('LINK STRESS SIMULATOR', self.run_link_stress_check, '#344d76'),
-        ):
-            self._button(sys_actions, title, command, color=color, width=23).pack(
-                 side='left', padx=(0, 9))
+        )):
+            self._button(sys_actions, title, command, color=color, width=20).grid(
+                 row=index//2, column=index%2, sticky='ew', padx=5, pady=5)
         sys_card = self._panel(system, 'THREE-LAYER CONNECTION HEALTH')
         sys_card.pack(fill='x', pady=(0, 12))
         self.link_visual = tk.Canvas(sys_card, height=81, bg=CARD_DARK, highlightthickness=0)
