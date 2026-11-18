@@ -128,7 +128,7 @@ class DiagnosisUITests(unittest.TestCase):
         self.app._diagnostic_clock(time.monotonic() + 4)
         self.assertEqual(self.app.diagnosis.checks['firmware'].status, 'FAIL')
         self.assertEqual(self.app.diagnosis.checks['telemetry'].status, 'FAIL')
-        self.assertIn('v1.6.3', self.app.diagnosis.advice())
+        self.assertIn('v1.6.5-safety', self.app.diagnosis.advice())
 
     def test_diagnostics_window_and_keyboard_are_non_driving(self):
         self.app.open_diagnostics()
