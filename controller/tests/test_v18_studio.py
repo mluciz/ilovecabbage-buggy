@@ -221,3 +221,19 @@ class TestStudioTk:
         assert frames[-1] == ("K",)
         assert len(frames) == 2
         assert self.app.pressed == set()
+
+    def test_route_text_fields_accept_digits_and_wasd_as_plain_text(self):
+        self.app._navigate('routes')
+        widget = tk.Entry(self.app.pages['routes'], textvariable=self.app.radius_var)
+        class E:
+            keysym = '3'
+            char = '3'
+        E.widget = widget
+        original_gear = self.app.gear
+        assert self.app._key_down(E()) is None
+        assert self.app.gear == original_gear
+        E.keysym = 'w'
+        E.char = 'w'
+        assert self.app._key_down(E()) is None
+        assert not self.app.pressed
+        widget.destroy()
