@@ -1037,7 +1037,7 @@ class BuggyApp:
                 return 'break'
         except (AttributeError, tk.TclError):
             return 'break'
-        if self._active_page != 'drive' and key in ('W', 'A', 'S', 'D'):
+        if self._active_page != 'drive' and key in ('W', 'A', 'S', 'D', '1', '2', '3', '4'):
             self.last_input_var.set('INPUT: open DRIVE workspace and ACTIVATE WASD first')
             return 'break'
         if self._typing(event.widget):
@@ -1240,10 +1240,18 @@ class BuggyApp:
             self._release_all_keys()
 
     def _steering_changed(self, _value=None):
+        # Changing steering while a physical key is held can abruptly change
+        # one motor's PWM. Require a fresh explicit arm after a live adjustment.
+        if self.online and not self.demo and self.pressed:
+            self.emergency_stop(quiet=True)
+            self.log('Live steering adjusted: safety brake. Re-arm after releasing keys.')
         self.steering_info_var.set(f'STEERING {self.steering_var.get()}%')
         self._display_manual_command()
 
     def _balance_changed(self, _value=None):
+        if self.online and not self.demo and self.pressed:
+            self.emergency_stop(quiet=True)
+            self.log('Live motor balance adjusted: safety brake. Re-arm after releasing keys.')
         pct = self.balance_var.get()
         self.balance_info_var.set(
             f'MOTOR BALANCE {pct:+d}% (favors {"RIGHT" if pct > 0 else "LEFT"})'
@@ -1254,7 +1262,7 @@ class BuggyApp:
         gear = int(gear)
         if gear not in (1, 2, 3, 4):
             raise ValueError('Gear must be 1..4')
-        if self.online and not self.demo and self.pressed and gear != self.gear:
+        if self.online and not self.demo and (self.pressed or self.running) and gear != self.gear:
             self.emergency_stop(quiet=True)
             self.log('Gear changed during motor drive: braking; re-arm before moving again.')
         self.gear = gear
