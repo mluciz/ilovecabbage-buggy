@@ -4,6 +4,7 @@ No hardware, Unreal installation or GUI display needed.
 """
 from __future__ import annotations
 import json
+import os
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -57,7 +58,7 @@ def test_executable_uses_argument_list_no_shell_and_nonblocking():
         argv = call.call_args.args[0]
         assert argv == [str(exe.resolve())]
         assert call.call_args.kwargs["shell"] is False
-        assert call.call_args.kwargs["cwd"] == str(exe.parent)
+        assert os.path.samefile(call.call_args.kwargs["cwd"], exe.parent)
 
 def test_unreal_project_opens_explicit_editor_not_shell():
     with TemporaryDirectory() as tmp:
