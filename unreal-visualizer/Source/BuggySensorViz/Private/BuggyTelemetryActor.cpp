@@ -4,6 +4,7 @@
 #include "Common/UdpSocketBuilder.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonReader.h"
+#include "Serialization/JsonWriter.h"
 #include "Dom/JsonObject.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -76,6 +77,7 @@ void ABuggyTelemetryActor::BeginPlay()
     ApplyOptionalPalette(ToFFront, TEXT("/Game/SpatialLab/Materials/M_ToFFront.M_ToFFront"));
     ApplyOptionalPalette(ToFLeft, TEXT("/Game/SpatialLab/Materials/M_ToFLeft.M_ToFLeft"));
     ApplyOptionalPalette(ToFRight, TEXT("/Game/SpatialLab/Materials/M_ToFRight.M_ToFRight"));
+    LoadMountCalibration();
     BuildDemoScene();
 }
 void ABuggyTelemetryActor::EndPlay(const EEndPlayReason::Type Reason)
@@ -122,7 +124,69 @@ bool ABuggyTelemetryActor::SetMountAngles(float Front, float Left, float Right)
     LeftMountYawDegrees = Left;
     RightMountYawDegrees = Right;
     ClearObservations();
+    SaveMountCalibration();
     return true;
+}
+void ABuggyTelemetryActor::LoadMountCalibration()
+{
+    const FString File = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SpatialLab"), TEXT("mounts.json"));
+    FString Json;
+    if (!FFileHelper::LoadFileToString(Json, *File))
+    {
+        CalibrationStatus = TEXT("Assumed defaults 0 / +55 / -55 - not physically verified");
+        return;
+    }
+    TSharedPtr<FJsonObject> Root;
+    if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Root) || !Root.IsValid())
+    {
+        CalibrationStatus = TEXT("Invalid saved mounts - using defaults");
+        return;
+    }
+    double Values[3];
+    if (!Root->TryGetNumberField(TEXT("front_deg"),Values[0]) ||
+        !Root->TryGetNumberField(TEXT("left_deg"),Values[1]) ||
+        !Root->TryGetNumberField(TEXT("right_deg"),Values[2]))
+    {
+        CalibrationStatus = TEXT("Incomplete saved mounts - using defaults");
+        return;
+    }
+    for (double V : Values)
+        if (!FMath::IsFinite(V) || FMath::Abs(V) > 180)
+        {
+            CalibrationStatus = TEXT("Out-of-range saved mounts - using defaults");
+            return;
+        }
+    FrontMountYawDegrees = (float)Values[0];
+    LeftMountYawDegrees = (float)Values[1];
+    RightMountYawDegrees = (float)Values[2];
+    CalibrationStatus = TEXT("User mounting angles loaded - physical directions still unverified");
+}
+void ABuggyTelemetryActor::SaveMountCalibration()
+{
+    const FString Folder = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SpatialLab"));
+    IPlatformFile& FS = FPlatformFileManager::Get().GetPlatformFile();
+    if (!FS.CreateDirectoryTree(*Folder))
+    {
+        CalibrationStatus = TEXT("Angles applied, but directory creation failed");
+        return;
+    }
+    TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+    Root->SetNumberField(TEXT("schema"),1);
+    Root->SetNumberField(TEXT("front_deg"),FrontMountYawDegrees);
+    Root->SetNumberField(TEXT("left_deg"),LeftMountYawDegrees);
+    Root->SetNumberField(TEXT("right_deg"),RightMountYawDegrees);
+    Root->SetBoolField(TEXT("physically_verified"),false);
+    FString Json;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Json);
+    if (!FJsonSerializer::Serialize(Root, Writer))
+    {
+        CalibrationStatus = TEXT("Angles applied, JSON serialization failed");
+        return;
+    }
+    const FString Path = FPaths::Combine(Folder, TEXT("mounts.json"));
+    CalibrationStatus = FFileHelper::SaveStringToFile(Json,*Path) ?
+        TEXT("Angles saved locally - not physically verified") :
+        TEXT("Angles applied, could not save profile");
 }
 FString ABuggyTelemetryActor::GetDemoScenarioName() const
 {
