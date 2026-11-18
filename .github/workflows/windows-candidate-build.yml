@@ -70,16 +70,16 @@ jobs:
           if (-not $iscc) { throw "Inno Setup ISCC.exe not found" }
           & $iscc /Q "installer/CabbageStudio.iss"
           if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed" }
-          if (!(Test-Path "dist/installer/CabbageControlStudio-v1.8.2-Setup-LiveBuggy-CANDIDATE.exe")) { throw "Installer is missing" }
+          if (!(Test-Path "dist/installer/CabbageControlStudio-v1.8.3-Setup-FasterGears-CANDIDATE.exe")) { throw "Installer is missing" }
       - uses: actions/upload-artifact@v4
         with:
-          name: CABBAGE-Studio-v1.8.2-Windows-INSTALLER-LIVE
-          path: controller/dist/installer/CabbageControlStudio-v1.8.2-Setup-LiveBuggy-CANDIDATE.exe
+          name: CABBAGE-Studio-v1.8.3-Windows-INSTALLER-FAST-GEARS
+          path: controller/dist/installer/CabbageControlStudio-v1.8.3-Setup-FasterGears-CANDIDATE.exe
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
-          name: CABBAGE-Studio-v1.8.2-PORTABLE-WITH-SPATIAL-LAB
+          name: CABBAGE-Studio-v1.8.3-PORTABLE-WITH-SPATIAL-LAB
           path: controller/dist/portable/
           if-no-files-found: error
           retention-days: 7
