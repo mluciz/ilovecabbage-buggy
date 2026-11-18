@@ -14,6 +14,7 @@ from ble_bridge import BLEBridge, BLEAK_ERROR
 from diagnostics import DiagnosticReport, interpret_error, usb_port_diagnosis
 from diagnostic_window import DiagnosticWindow
 from wheel_doctor_window import WheelDoctorWindow
+from wheel_doctor import audit_sources
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
@@ -200,8 +201,6 @@ class BuggyApp:
         self._button(row, 'DIAGNOSTICS', self.open_diagnostics, color='#6b528f',
                      width=13).pack(side='left', padx=(10, 0))
 
-        self._button(row, 'WHEEL DOCTOR', self.open_wheel_doctor, color='#177e79',
-                     width=15).pack(side='left', padx=(8, 0))
         health = tk.Frame(self.root, bg=CARD_DARK, highlightbackground=BORDER, highlightthickness=1)
         health.pack(fill='x', padx=20, pady=(0, 12))
         tk.Label(health, text='LIVE SAFETY / CONNECTION', bg=CARD_DARK, fg=CYAN,
@@ -234,7 +233,7 @@ class BuggyApp:
         right = tk.Frame(work, bg=BG)
         right.pack(side='left', fill='both', expand=True)
 
-        manual = self._panel(left, '01   MANUAL DRIVE  /  WASD')
+        manual = self._panel(left, '01   DRIVE DECK  /  WASD')
         manual.configure(takefocus=1)
         self.drive_panel = manual
         manual.pack(fill='x', pady=(0, 10))
@@ -383,7 +382,7 @@ class BuggyApp:
         tk.Label(preview_panel, textvariable=self.progress_var, bg=CARD, fg=CYAN,
                  font=('Segoe UI', 10, 'bold')).pack(anchor='w', padx=15, pady=(0, 12))
 
-        dashboard = self._panel(right, '04   LIVE TELEMETRY / BRAKING')
+        dashboard = self._panel(right, '04   SYSTEM HEALTH / MOTOR TELEMETRY')
         dashboard.pack(fill='x', pady=(10, 0))
         dash_body = tk.Frame(dashboard, bg=CARD)
         dash_body.pack(fill='x', padx=15, pady=(0, 12))
@@ -424,7 +423,7 @@ class BuggyApp:
                                 insertbackground=TEXT, relief='flat', padx=10, pady=5,
                                 font=('Consolas', 9), state='disabled')
         self.log_text.pack(fill='x', pady=(4, 0))
-        self.log('Open Demo mode to explore without your buggy, or SCAN BLE to connect.')
+        self.log('FIELD CONSOLE READY: demo is offline; scan BLE to connect real hardware. F1 opens Wheel Doctor.')
 
     def log(self, message):
         self.log_text.configure(state='normal')
@@ -485,6 +484,13 @@ class BuggyApp:
         self.keyboard_test_active = False
         self.diag_target = self.devices.get(self.device_var.get())
         self.diagnosis.start(f'Device selection: {self.device_var.get() or "none"}; UUID: {self.uuid_var.get()}; demo: {self.demo or self.demo_var.get()}')
+        pins_ok, pin_lines = audit_sources()
+        self.diagnosis.set('pin_source', 'PASS' if pins_ok else 'FAIL',
+                           'Both firmware sketches + Windows L/R protocol match; actual wiring not measured' if pins_ok
+                           else 'Source code mismatch — open WHEEL DOCTOR and run SOURCE PIN AUDIT')
+        for item in pin_lines:
+            if item.startswith('FAIL'):
+                self.diagnosis.add(item)
         if BLEAK_ERROR:
             self.diagnosis.set('runtime', 'FAIL', 'Bleak import failed: ' + BLEAK_ERROR)
             self._finish_diagnostics()
