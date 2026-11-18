@@ -153,6 +153,7 @@ void ABuggyTelemetryActor::Tick(float DeltaTime)
     if (!bPaused && !bDemoMode && GetStreamAgeSeconds() > 1.5)
     {
         for (FSensorReading& Sensor : Readings) Sensor.bValid = false;
+        bHaveImu = false;
     }
     const double Now = FPlatformTime::Seconds();
     if (!bPaused)
