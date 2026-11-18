@@ -1,0 +1,13 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.4",
+  "Category": "",
+  "Description": "Isolated 3D sensor visualization companion for ilovecabbage buggy",
+  "Modules": [
+    {
+      "Name": "BuggySensorViz",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ]
+}
