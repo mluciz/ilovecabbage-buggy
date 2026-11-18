@@ -9,11 +9,22 @@
 ABuggyVizGameMode::ABuggyVizGameMode()
 {
     DefaultPawnClass = ABuggyVizCameraPawn::StaticClass();
+    PrimaryActorTick.bCanEverTick = true;
 }
 void ABuggyVizGameMode::BeginPlay()
 {
     Super::BeginPlay();
     Visualizer = GetWorld()->SpawnActor<ABuggyTelemetryActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+    EnsureLocalInterface();
+}
+void ABuggyVizGameMode::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+    if (!Dashboard) EnsureLocalInterface();
+}
+void ABuggyVizGameMode::EnsureLocalInterface()
+{
+    if (!IsValid(Visualizer)) return;
     if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
     {
         ABuggyVizCameraPawn* Camera = Cast<ABuggyVizCameraPawn>(PC->GetPawn());
