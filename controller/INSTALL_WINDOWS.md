@@ -1,11 +1,11 @@
-# Install CABBAGE Control Studio on Windows
+# Install CABBAGE Control Studio + Unreal Spatial Lab on Windows
 
 This is a **test candidate**, not yet verified on the real motors or your HM-10 module.
 
 ## Normal installation — no terminal required
 
-1. Download the **CABBAGE-Studio-v1.8-Windows-INSTALLER** artifact from the latest successful Windows desktop installer build on [GitHub Actions](https://github.com/mluciz/ilovecabbage-buggy/actions/workflows/windows-candidate-build.yml). The build artifact downloads as a ZIP.
-2. In Windows File Explorer, **Extract All**. Double-click **CabbageControlStudio-v1.8-Setup-CANDIDATE.exe** inside the extracted folder.
+1. Download the **CABBAGE-Studio-v1.8.1-Windows-INSTALLER-SPATIAL-LAB** artifact from the latest successful Windows desktop installer build on [GitHub Actions](https://github.com/mluciz/ilovecabbage-buggy/actions/workflows/windows-candidate-build.yml). The build artifact downloads as a ZIP.
+2. In Windows File Explorer, **Extract All**. Double-click **CabbageControlStudio-v1.8.1-Setup-SpatialLab-CANDIDATE.exe** inside the extracted folder.
 3. Follow the installation wizard. It installs **for your Windows user only**, without a Python installation or administrator account. Tick **Create a desktop shortcut** if desired.
 4. Open **Start → Cabbage Control Studio → Cabbage Control Studio**. The application starts **DISCONNECTED** with the drive disarmed.
 5. To explore without motors, choose **Start → Cabbage Control Studio → Cabbage Studio — Demo (No Motors)**. This opens the same app in simulator mode with no BLE commands.
@@ -13,9 +13,20 @@ This is a **test candidate**, not yet verified on the real motors or your HM-10 
 
 You will not need to open Command Prompt, PowerShell, install pip packages, or run the `.bat` launchers for normal use.
 
+## Open Unreal Spatial Lab from the installed app
+
+1. Open **CABBAGE Control Studio** from the Start Menu or desktop. To avoid live motor movement, start in **Demo (No Motors)** or stay disconnected.
+2. Click **SPATIAL LAB / 3D** on the left rail, choose **SYSTEM → OPEN SPATIAL LAB / 3D**, or press **F2**.
+3. The app requests an emergency brake and **blocks launching while a real Bluetooth motor link is connected**.
+4. The installer has copied the full `unreal-visualizer/BuggySensorViz.uproject` and C++ source inside the installed app folder. The launcher locates that project automatically. A compiled Spatial Lab executable you select is also supported.
+5. **Unreal Engine 5.4 and Visual Studio 2022 C++ build tools are separately required** to open or build the source project. The current candidate does **not** ship a compiled Unreal game, and your PC may ask to build its C++ modules when opening.
+6. To explore the 3D scene, open the project in Unreal, then press **Play** in the Editor. Read the project guide at `%LOCALAPPDATA%\Programs\CabbageControlStudio\unreal-visualizer\README.md`.
+
+The app installer does NOT automatically install Unreal Engine, install Visual Studio, update Arduino firmware, flash anything to your buggy, or transmit motor commands from Unreal. The Unreal visualization and sensor pipeline are still independent prototypes, not validated with physical sensors.
+
 ## Prefer not to install?
 
-The same Actions run also has **CABBAGE-Studio-v1.8-PORTABLE-EXE**. Extract its ZIP and open `CabbageControlStudio.exe` directly. It is a standalone Windows GUI with an embedded Python runtime. No installer or terminal is required. For permanent use, the installer is more convenient because it adds shortcuts and uninstall support.
+The same Actions run also has **CABBAGE-Studio-v1.8.1-PORTABLE-WITH-SPATIAL-LAB**. Extract its ZIP **with the entire `unreal-visualizer/` folder beside the EXE**, then open `CabbageControlStudio.exe` directly. It is a standalone Windows GUI with an embedded Python runtime. No installer or terminal is required. For permanent use, the installer is more convenient because it adds shortcuts and uninstall support.
 
 ## What the app does **not** do
 

@@ -24,6 +24,10 @@ def test_installer_is_user_scoped_and_does_not_need_admin():
     assert "MinVersion=10.0" in text
     assert 'Source: "..\\dist\\CabbageControlStudio.exe"' in text
     assert "CloseApplications=no" in text
+    assert 'Source: "..\\..\\unreal-visualizer\\*"' in text
+    assert r'DestDir: "{app}\unreal-visualizer"' in text
+    assert "recursesubdirs createallsubdirs" in text
+    assert 'Source: "..\\SPATIAL_LAB_INTEGRATION.md"' in text
 
 
 def test_installer_creates_shortcuts_and_installed_demo():
@@ -46,8 +50,11 @@ def test_packaging_is_genuinely_windowed_and_has_installer_artifact():
     assert "--onefile" in text
     assert "branding/CabbageStudio.ico" in text
     assert "installer/CabbageStudio.iss" in text
-    assert "CABBAGE-Studio-v1.8-Windows-INSTALLER" in text
-    assert "CABBAGE-Studio-v1.8-PORTABLE-EXE" in text
+    assert "CABBAGE-Studio-v1.8.1-Windows-INSTALLER-SPATIAL-LAB" in text
+    assert "CABBAGE-Studio-v1.8.1-PORTABLE-WITH-SPATIAL-LAB" in text
+    assert 'Copy-Item -Path "../unreal-visualizer"' in text
+    assert 'dist/portable/unreal-visualizer/BuggySensorViz.uproject' in text
+    assert 'tests/test_spatial_lab_launcher.py' in text
 
 
 def test_no_automatic_hardware_arming_in_desktop_launcher():

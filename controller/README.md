@@ -1,4 +1,12 @@
+# Downloadable Windows desktop app + Spatial Lab / 3D (v1.8.1 candidate)
+
+**No terminal or Python install required to run the controller.** Download the installer from the GitHub Actions artifact named `CABBAGE-Studio-v1.8.1-Windows-INSTALLER-SPATIAL-LAB` and double-click the Setup EXE. It installs a Start Menu shortcut and optional desktop shortcut. In the Control Studio rail, choose **SPATIAL LAB / 3D** or press **F2**; the launcher finds the included `unreal-visualizer/BuggySensorViz.uproject` folder. The Unreal project **is source**, not a compiled standalone game, and needs Unreal Engine 5.4 + Visual Studio C++ build tools (or a separately built BuggySensorViz EXE) to display the 3D scene. The controller brakes and refuses the launch if a real BLE device is still connected. **No hardware test of this integration has been completed.** See [INSTALL_WINDOWS.md](INSTALL_WINDOWS.md).
+
+---
+
 # CABBAGE Control Studio v1.8 — Premium Operator Interface (development candidate)
+
+**Spatial Lab 3D integration (separate candidate branch):** From the v1.8 navigation rail, click **SPATIAL LAB / 3D**, or open **SYSTEM → OPEN SPATIAL LAB / 3D**, or press **F2**. The app latches its usual brake and **refuses launch while live BLE is connected**. When offline or simulated, it opens the Unreal Engine 5.4 `unreal-visualizer/BuggySensorViz.uproject` from the bundled sidecar, or a compiled Spatial Lab EXE you selected previously. The UE project is source, not a precompiled 3D game; UE5.4/Visual Studio tools are required to open/build it. Full details: [SPATIAL_LAB_INTEGRATION.md](SPATIAL_LAB_INTEGRATION.md).
 
 **New in v1.8:** redesigned Drive / Routes / System workspaces; a nine-direction hold-to-drive cockpit; large live left/right PWM command diagram; link-path visualization; atomic pointer release; live-tuning safety brakes; validated Save/Reset Tuning; Power Path Lab for Bluetooth power loss on batteries; Quick Preflight; searchable Operator Guide; and a test-only Windows EXE build workflow.
 
