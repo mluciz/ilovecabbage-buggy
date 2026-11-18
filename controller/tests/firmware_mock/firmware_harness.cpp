@@ -134,8 +134,8 @@ int main() {
 
     // V,165 is a safe capability query required before GUI bench pulses.
     BT.output.clear();
-    ble("K\\n");
-    ble("V\\n");
+    ble("K\n");
+    ble("V\n");
     assert(versionPending);
     advance(RX_QUIET_MS + 1);
     assert(!versionPending);
