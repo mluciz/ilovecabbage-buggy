@@ -17,6 +17,7 @@ from wheel_doctor_window import WheelDoctorWindow
 from wheel_doctor import audit_sources
 from premium_visuals import render_drive, render_link_health, command_label
 from operator_preferences import load_preferences, save_preferences, DEFAULTS
+from power_path_window import PowerPathWindow
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
@@ -85,6 +86,7 @@ class BuggyApp:
         self.diagnosis = DiagnosticReport()
         self.diagnostic_window = None
         self.wheel_doctor_window = None
+        self.power_path_window = None
         self.wheel_probe_active = False
         self.firmware_version = 0
         self.diag_phase = 'idle'
@@ -256,6 +258,8 @@ class BuggyApp:
                  font=('Segoe UI', 9, 'bold')).pack(anchor='w', padx=17, pady=(8, 8))
         self._button(rail, 'WHEEL DOCTOR', self.open_wheel_doctor,
                      color='#225d60', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'POWER PATH LAB', self.open_power_path,
+                     color='#305b70', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'FULL DIAGNOSIS', self.open_diagnostics,
                      color='#344e73', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'BRAKE / ESC', self.emergency_stop,
@@ -330,6 +334,7 @@ class BuggyApp:
         for title, command, color in (
             ('RUN FULL DIAGNOSIS', self.open_diagnostics, '#286283'),
             ('WHEEL DOCTOR  /  F1', self.open_wheel_doctor, '#167e78'),
+            ('POWER PATH LAB', self.open_power_path, '#345f77'),
             ('OFFLINE CONTROL CHECK', self.run_offline_check, '#344d76'),
             ('LINK STRESS SIMULATOR', self.run_link_stress_check, '#344d76'),
         ):
@@ -630,6 +635,14 @@ class BuggyApp:
         else:
             self.diagnostic_window.top.lift()
             self.diagnostic_window.top.focus_force()
+
+    def open_power_path(self):
+        # Source-power troubleshooting never deliberately commands motors.
+        self.emergency_stop(quiet=True)
+        if self.power_path_window is None:
+            self.power_path_window = PowerPathWindow(self)
+        else:
+            self.power_path_window.top.lift()
 
     def open_wheel_doctor(self):
         # Suppress all ordinary drive commands before opening live diagnostics.
