@@ -362,16 +362,39 @@ class BuggyApp:
         manual.pack(fill='x', pady=(0, 10))
         self._label(manual, 'Hold keys to move · diagonals steer · release to stop',
                     size=9, color=MUTED).pack(anchor='w', padx=15)
+
         pads = tk.Frame(manual, bg=CARD)
-        pads.pack(pady=8)
-        keys = [('W', 0, 1), ('A', 1, 0), ('S', 1, 1), ('D', 1, 2)]
-        for key, r, c in keys:
-            btn = tk.Button(pads, text=key, bg='#263851', fg=TEXT, width=6, height=2,
-                            relief='flat', font=('Segoe UI', 12, 'bold'), bd=0)
-            btn.grid(row=r, column=c, padx=3, pady=3)
-            btn.bind('<ButtonPress-1>', lambda _e, k=key: self._press(k, source='mouse'))
-            btn.bind('<ButtonRelease-1>', lambda _e, k=key: self._release(k, source='mouse'))
-            btn.bind('<Leave>', lambda _e, k=key: self._release(k, source='mouse'))
+        pads.pack(pady=(12, 12))
+        tk.Label(pads, text='PRESS + HOLD  /  release to brake',
+                 bg=CARD, fg=MUTED, font=('Segoe UI', 9, 'bold')).grid(
+                     row=0, column=0, columnspan=3, sticky='w', pady=(0, 9))
+        self.drive_pad_buttons = {}
+        directions = [
+            ('W + A', ('W', 'A'), 1, 0), ('W', ('W',), 1, 1),
+            ('W + D', ('W', 'D'), 1, 2),
+            ('A', ('A',), 2, 0), ('BRAKE', (), 2, 1),
+            ('D', ('D',), 2, 2),
+            ('S + A', ('S', 'A'), 3, 0), ('S', ('S',), 3, 1),
+            ('S + D', ('S', 'D'), 3, 2),
+        ]
+        for title, keys, row_index, col_index in directions:
+            btn = tk.Button(pads, text=title,
+                bg='#943c52' if not keys else '#19364e',
+                fg=TEXT, activebackground='#2c7e75', activeforeground=TEXT,
+                width=9, height=2, bd=0, relief='flat',
+                cursor='hand2', font=('Segoe UI', 11, 'bold'))
+            btn.grid(row=row_index, column=col_index, padx=4, pady=4)
+            if keys:
+                btn.bind('<ButtonPress-1>',
+                         lambda _e, combo=keys: self._press_combo(combo))
+                btn.bind('<ButtonRelease-1>',
+                         lambda _e, combo=keys: self._release_combo(combo))
+                btn.bind('<Leave>',
+                         lambda _e, combo=keys: self._release_combo(combo))
+            else:
+                btn.configure(command=self.emergency_stop)
+            for key in keys:
+                self.drive_pad_buttons.setdefault(key, []).append(btn)
         gears = tk.Frame(manual, bg=CARD)
         gears.pack(fill='x', padx=15, pady=(0, 12))
         self._label(gears, 'GEAR', color=MUTED).pack(side='left', padx=(0, 8))
