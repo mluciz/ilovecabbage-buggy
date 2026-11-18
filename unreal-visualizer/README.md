@@ -11,7 +11,7 @@ Requirements: Unreal Engine **5.4** installed from Epic Games Launcher; Visual S
 1. Open `BuggySensorViz.uproject`. If prompted to generate or rebuild C++ project modules, choose Yes. If the build fails, use right-click `BuggySensorViz.uproject` → Generate Visual Studio project files; open the solution; build `Development Editor | Win64`.
 2. Open the default `Entry` map; press **Play**. No handcrafted `.umap` is required: the game mode spawns a buggy, ground grid, five demonstration objects, camera and dashboard.
 3. Default is **INTERNAL SIMULATION**. Watch the front/left/right distance readings and white/green/blue/orange observation markers.
-4. Use the in-app buttons to pause, clear map points, hide rays, hide demo geometry, change camera, focus, or switch to external UDP.
+4. Use the in-app buttons to pause, clear map points, **export observations to CSV** (project `Saved/SpatialLab`), hide rays, hide demo geometry, change camera, focus, or switch to external UDP.
 5. Controls: `Q/E` orbit; `R/T` camera tilt; `mouse wheel` zoom; `V` top view; `F` focus; `Home` camera reset. Click the 3D viewport first if keyboard focus remains in the UI.
 
 ### External test sender (no hardware)
@@ -78,7 +78,7 @@ Replace COM8 with the actual separate sensor port. This cannot silently share th
 
 ## Source directories
 
-- `Source/`: Unreal C++ game mode, native dashboard, 3D buggy + floor + synthetic boxes, live ToF ray visualizer, limited observation history, orbit/top camera
+- `Source/`: Unreal C++ game mode, native dashboard, 3D buggy + floor + synthetic boxes, live ToF ray visualizer, limited observation history and CSV export, orbit/top camera
 - `Config/`: Engine game mode, startup map, input controls
 - `tools/`: strict protocol, external three-channel demo, read-only serial bridge
 - `tests/`: standard-library protocol and geometry unit tests
