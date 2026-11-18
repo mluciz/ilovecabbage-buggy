@@ -20,6 +20,8 @@ from operator_preferences import load_preferences, save_preferences, DEFAULTS
 from power_path_window import PowerPathWindow
 from preflight_window import PreflightWindow
 from operator_guide_window import GuideWindow
+from spatial_lab_launcher import (discover_target, save_target, launch as launch_spatial_lab,
+                                  SpatialLabLaunchError)
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
@@ -146,6 +148,7 @@ class BuggyApp:
         self.balance_var.trace_add('write', lambda *_: self._balance_changed())
         self._bind_keys()
         self.root.bind_all('<F1>', lambda _e: self.open_wheel_doctor(), add='+')
+        self.root.bind_all('<F2>', lambda _e: self.open_spatial_lab(), add='+')
         self.root.protocol('WM_DELETE_WINDOW', self._quit)
         self._preview_after = self.root.after(180, self.preview_route)
         self._tick_after = self.root.after(80, self._tick)
@@ -262,6 +265,8 @@ class BuggyApp:
                  font=('Segoe UI', 9, 'bold')).pack(anchor='w', padx=17, pady=(8, 8))
         self._button(rail, 'WHEEL DOCTOR', self.open_wheel_doctor,
                      color='#225d60', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'SPATIAL LAB  /  3D', self.open_spatial_lab,
+                     color='#256f75', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'POWER PATH LAB', self.open_power_path,
                      color='#305b70', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'QUICK PREFLIGHT', self.open_preflight,
@@ -350,6 +355,7 @@ class BuggyApp:
             ('OFFLINE CONTROL CHECK', self.run_offline_check, '#344d76'),
             ('LINK STRESS SIMULATOR', self.run_link_stress_check, '#344d76'),
             ('OPERATOR GUIDE', self.open_guide, '#344d76'),
+            ('OPEN SPATIAL LAB  /  3D', self.open_spatial_lab, '#196b75'),
         )):
             self._button(sys_actions, title, command, color=color, width=20).grid(
                  row=index//2, column=index%2, sticky='ew', padx=5, pady=5)
@@ -710,6 +716,53 @@ class BuggyApp:
             self.wheel_doctor_window.top.lift()
         if self.online and not self.demo:
             self.bridge.probe_version()
+
+    def open_spatial_lab(self):
+        """Open the separately installed Unreal 3D visualizer.
+
+        Do not launch while a live BLE motor link is connected. A safety brake
+        is requested even in simulator mode, and the launcher is read-only.
+        """
+        self.emergency_stop(quiet=True)
+        if self.online and not self.demo:
+            messagebox.showwarning('Disconnect buggy before opening Spatial Lab',
+                'The motor brake has been requested. Disconnect the live Bluetooth '
+                'connection before launching the 3D visualizer. A software brake '
+                'cannot replace the physical motor-battery cutoff.')
+            self.log('Spatial Lab launch blocked: real BLE link still connected.')
+            return False
+        target = discover_target()
+        if target is None:
+            candidate = filedialog.askopenfilename(
+                title='Locate Spatial Lab 3D (Unreal project or Windows EXE)',
+                filetypes=[
+                    ('Spatial Lab Unreal project / EXE', '*.uproject *.exe'),
+                    ('Unreal project', '*.uproject'),
+                    ('Windows executable', '*.exe'),
+                ])
+            if not candidate:
+                messagebox.showinfo('Spatial Lab not installed',
+                    'The visualizer project is included in the integration source under '
+                    'unreal-visualizer/BuggySensorViz.uproject. To open the source project '
+                    'you need Unreal Engine 5.4 and Visual Studio C++ tools. '
+                    'Alternatively select an already-built BuggySensorViz.exe. '
+                    'This launcher never automatically downloads or runs files.')
+                self.log('Spatial Lab launch cancelled: no local project/EXE found.')
+                return False
+            try:
+                target = save_target(candidate)
+            except (SpatialLabLaunchError, OSError) as exc:
+                messagebox.showerror('Invalid Spatial Lab selection', str(exc))
+                return False
+        try:
+            launch_spatial_lab(target)
+        except SpatialLabLaunchError as exc:
+            messagebox.showerror('Could not open Spatial Lab', str(exc))
+            self.log('Spatial Lab launch failed: ' + str(exc))
+            return False
+        self.log('Spatial Lab opened as a separate read-only process: ' + target.name)
+        self.flight.record('SYSTEM', 'SPATIAL_LAB_LAUNCH', 'No motor commands sent by visualizer.')
+        return True
 
     def start_wheel_probe(self, left, right):
         """UI-opt-in single 450 ms pulse. BLE bridge enforces protocol gate too."""
