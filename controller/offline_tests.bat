@@ -15,11 +15,12 @@ if errorlevel 1 (
   exit /b 1
 )
 %PYTHON% -m pytest -q
+set "RESULT=%ERRORLEVEL%"
 echo.
 echo Test output above reflects SOFTWARE and firmware-mock checks only.
 echo Physical motor direction, battery power and braking still require real bench checks.
 pause
-exit /b %ERRORLEVEL%
+exit /b %RESULT%
 :missing
 echo Python 3.11+ not found.
 pause
