@@ -29,7 +29,7 @@ Unreal C++ compilation still need actual Windows/engine validation.
   Invalid readings show no distance; do not infer a clear path.
 - **Proximity warning**: 250 mm close, 550 mm near. This is a *visual*
   indication, not an automatic braking or collision-avoidance controller.
-- **Mount angles**: front, left, right bearings in degrees. The default
+- **Mount angles**: front, left, right bearings in degrees. Once changed, values are saved to local `Saved/SpatialLab/mounts.json` and loaded at the next start. Profiles are deliberately marked `physically_verified=false` until hardware measurements are established. The default
   0 / +55 / -55 arrangement is **assumed**. Measure the three mounts and set
   those actual angles. Applying clears old points because map rays change.
 - **Point CSV export**: `Saved/SpatialLab/observations_UTC.csv` with
