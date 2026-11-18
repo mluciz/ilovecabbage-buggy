@@ -8,6 +8,8 @@ class UVerticalBox;
 class UTextBlock;
 class UButton;
 class UBorder;
+class UProgressBar;
+class UEditableTextBox;
 
 UCLASS()
 class BUGGYSENSORVIZ_API UBuggyVizDashboard : public UUserWidget
@@ -30,6 +32,9 @@ private:
     UFUNCTION() void OnToggleRays();
     UFUNCTION() void OnToggleTruth();
     UFUNCTION() void OnExportPoints();
+    UFUNCTION() void OnApplyMountAngles();
+    UFUNCTION() void OnResetMountAngles();
+    UFUNCTION() void OnCycleScenario();
     UFUNCTION() void OnToggleCamera();
     UFUNCTION() void OnFocusCamera();
     UPROPERTY() TObjectPtr<ABuggyTelemetryActor> Visualizer;
@@ -38,7 +43,13 @@ private:
     UPROPERTY() TObjectPtr<UTextBlock> PoseText;
     UPROPERTY() TObjectPtr<UTextBlock> MapText;
     UPROPERTY() TObjectPtr<UTextBlock> ImuText;
+    UPROPERTY() TObjectPtr<UTextBlock> DiagnosticsText;
+    UPROPERTY() TObjectPtr<UTextBlock> ProximityText;
+    UPROPERTY() TObjectPtr<UTextBlock> ScenarioText;
+    UPROPERTY() TObjectPtr<UTextBlock> CalibrationText;
     UPROPERTY() TObjectPtr<UTextBlock> HelpText;
+    UPROPERTY() TObjectPtr<UProgressBar> SensorBars[3];
+    UPROPERTY() TObjectPtr<UEditableTextBox> MountInputs[3];
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextFront;
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextLeft;
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextRight;
