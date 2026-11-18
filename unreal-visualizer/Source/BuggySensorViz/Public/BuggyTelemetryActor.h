@@ -33,6 +33,11 @@ public:
     bool IsSensorValid(int32 Index) const;
     float GetDistanceMm(int32 Index) const;
     float GetHeadingDegrees() const { return EstimatedYawDegrees; }
+    float GetPitchDegrees() const { return PitchDegrees; }
+    float GetRollDegrees() const { return RollDegrees; }
+    FVector GetAccelerometerG() const { return LastAccelerometerG; }
+    FVector GetGyroscopeDps() const { return LastGyroscopeDps; }
+    bool HasImu() const { return bHaveImu; }
     int32 GetObservationCount() const { return Observations.Num(); }
     int32 GetObservationLimit() const { return MaxObservationCount; }
     int32 GetPacketCount() const { return AcceptedPacketCount; }
@@ -75,7 +80,7 @@ private:
     FVector SensorDirection(int32 SensorIndex) const;
     float SensorYaw(int32 SensorIndex) const;
     bool RayBoxHit2D(const FVector& Start, const FVector& Ray, const FDemoObstacle& Box, float& HitCm) const;
-    static UStaticMeshComponent* MakeMesh(AActor* Owner, USceneComponent* Parent, const FName& Name,
+    static UStaticMeshComponent* MakeMesh(ABuggyTelemetryActor* Owner, USceneComponent* Parent, const FName& Name,
                                           const FVector& Offset, const FVector& Scale);
 
     UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> SceneRoot;
@@ -95,6 +100,11 @@ private:
     double LastPacketAt = -1.0;
     double LastPointAt[3] = {-1.0,-1.0,-1.0};
     float EstimatedYawDegrees = 0.0f;
+    float PitchDegrees = 0.0f;
+    float RollDegrees = 0.0f;
+    FVector LastAccelerometerG = FVector::ZeroVector;
+    FVector LastGyroscopeDps = FVector::ZeroVector;
+    bool bHaveImu = false;
     float DemoTimeSeconds = 0.0f;
     int32 AcceptedPacketCount = 0;
     int32 RejectedPacketCount = 0;
