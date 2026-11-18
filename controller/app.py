@@ -1047,6 +1047,11 @@ class BuggyApp:
         # Escape above still acts as a global emergency stop.
         try:
             if event.widget.winfo_toplevel() is not self.root:
+                # An auxiliary window must NEVER send motor commands, but its
+                # search/input fields must still accept normal text and numbers.
+                if self._typing(event.widget):
+                    self.last_input_var.set('INPUT: dialog text input; motor shortcuts disabled')
+                    return
                 return 'break'
         except (AttributeError, tk.TclError):
             return 'break'
