@@ -29,14 +29,19 @@ jobs:
       - name: Python syntax and non-GUI validation
         run: |
           python -m compileall -q .
-          python -m pytest -q tests/test_wheel_doctor_v17.py tests/test_wheel_safety_v165.py tests/test_v18_studio.py -k "not TestStudioTk"
+          python -m pytest -q tests/test_wheel_doctor_v17.py tests/test_wheel_safety_v165.py tests/test_v18_studio.py tests/test_spatial_lab_launcher.py -k "not TestStudioTk"
       - name: Bundle test-only desktop application
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name "Cabbage-Studio-v18-CANDIDATE" --paths "." --add-data "arduino;arduino" --add-data "app.py;." --add-data "ble_bridge.py;." --add-data "WHEEL_DOCTOR_FIELD_GUIDE.md;." --hidden-import "bleak.backends.winrt" app.py
           if (!(Test-Path "dist/Cabbage-Studio-v18-CANDIDATE.exe")) { throw "Missing bundled EXE" }
+      - name: Include Unreal Spatial Lab companion source alongside the EXE
+        run: |
+          Copy-Item -Path "../unreal-visualizer" -Destination "dist/unreal-visualizer" -Recurse -Force
+          if (!(Test-Path "dist/unreal-visualizer/BuggySensorViz.uproject")) { throw "Unreal project sidecar is missing" }
+          if (!(Test-Path "dist/unreal-visualizer/build_and_open_unreal.bat")) { throw "Unreal build launcher is missing" }
       - uses: actions/upload-artifact@v4
         with:
           name: Cabbage-Studio-v18-CANDIDATE-Windows
-          path: controller/dist/Cabbage-Studio-v18-CANDIDATE.exe
+          path: controller/dist/
           if-no-files-found: error
           retention-days: 7
