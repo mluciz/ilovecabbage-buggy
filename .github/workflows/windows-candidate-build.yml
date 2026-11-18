@@ -1,4 +1,4 @@
-name: Windows candidate packaging
+name: Windows desktop installer candidate
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  windows-bundle:
+  windows-desktop-app:
     runs-on: windows-latest
     defaults:
       run:
@@ -22,21 +22,55 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install test and packaging dependencies
+      - name: Install offline test and GUI packaging dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pytest "pyinstaller>=6,<8"
-      - name: Python syntax and non-GUI validation
+          python -m pip install -r requirements.txt pytest "pyinstaller>=6,<8" "Pillow>=10,<13"
+      - name: Validate Python sources, physical-protocol guards and installer configuration
         run: |
           python -m compileall -q .
-          python -m pytest -q tests/test_wheel_doctor_v17.py tests/test_wheel_safety_v165.py tests/test_v18_studio.py -k "not TestStudioTk"
-      - name: Bundle test-only desktop application
+          python -m pytest -q tests/test_wheel_doctor_v17.py tests/test_wheel_safety_v165.py tests/test_v18_studio.py tests/test_desktop_installer.py -k "not TestStudioTk"
+      - name: Generate the CABBAGE multi-resolution app icon
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name "Cabbage-Studio-v18-CANDIDATE" --paths "." --add-data "arduino;arduino" --add-data "app.py;." --add-data "ble_bridge.py;." --add-data "WHEEL_DOCTOR_FIELD_GUIDE.md;." --hidden-import "bleak.backends.winrt" app.py
-          if (!(Test-Path "dist/Cabbage-Studio-v18-CANDIDATE.exe")) { throw "Missing bundled EXE" }
+          python build_icon.py
+          if (!(Test-Path "branding/CabbageStudio.ico")) { throw "Missing branded Windows icon" }
+      - name: Bundle console-free Windows app (Python runtime included)
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --icon "branding/CabbageStudio.ico" --name "CabbageControlStudio" --paths "." --add-data "arduino;arduino" --add-data "app.py;." --add-data "ble_bridge.py;." --add-data "WHEEL_DOCTOR_FIELD_GUIDE.md;." --add-data "V18_DESIGN_AUDIT.md;." --add-data "README.md;." --hidden-import "bleak.backends.winrt" desktop_entry.py
+          if (!(Test-Path "dist/CabbageControlStudio.exe")) { throw "Missing Windows GUI executable" }
+      - name: Install Inno Setup if not available on runner
+        run: |
+          $candidatePaths = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+          if (-not ($candidatePaths | Where-Object { Test-Path $_ })) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed" }
+          }
+      - name: Build one-click installer with Start Menu and optional desktop shortcut
+        run: |
+          $candidatePaths = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source }
+          if (-not $iscc) { throw "Inno Setup ISCC.exe not found" }
+          & $iscc /Q "installer/CabbageStudio.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed" }
+          if (!(Test-Path "dist/installer/CabbageControlStudio-v1.8-Setup-CANDIDATE.exe")) {
+            throw "Installer was not produced"
+          }
       - uses: actions/upload-artifact@v4
         with:
-          name: Cabbage-Studio-v18-CANDIDATE-Windows
-          path: controller/dist/Cabbage-Studio-v18-CANDIDATE.exe
+          name: CABBAGE-Studio-v1.8-Windows-INSTALLER
+          path: controller/dist/installer/CabbageControlStudio-v1.8-Setup-CANDIDATE.exe
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CABBAGE-Studio-v1.8-PORTABLE-EXE
+          path: controller/dist/CabbageControlStudio.exe
           if-no-files-found: error
           retention-days: 7
