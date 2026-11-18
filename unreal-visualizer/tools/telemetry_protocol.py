@@ -66,7 +66,8 @@ def validate_packet(data: Any) -> dict[str, Any]:
         if not isinstance(imu, dict):
             raise TelemetryError("imu must be an object")
         out["imu"] = {
-            "gyro_z_dps": number(imu.get("gyro_z_dps"), name="imu.gyro_z_dps", low=-2000, high=2000),
+            **{f"gyro_{axis}_dps": number(imu.get(f"gyro_{axis}_dps"), name=f"imu.gyro_{axis}_dps", low=-2000, high=2000) for axis in "xyz"},
+            **{f"accel_{axis}_g": number(imu.get(f"accel_{axis}_g"), name=f"imu.accel_{axis}_g", low=-16, high=16) for axis in "xyz"},
             "dt_s": number(imu.get("dt_s"), name="imu.dt_s", low=0.000001, high=0.2),
         }
     return out
