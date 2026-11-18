@@ -28,6 +28,7 @@ private:
     UFUNCTION() void OnClearMap();
     UFUNCTION() void OnToggleRays();
     UFUNCTION() void OnToggleTruth();
+    UFUNCTION() void OnExportPoints();
     UFUNCTION() void OnToggleCamera();
     UFUNCTION() void OnFocusCamera();
     UPROPERTY() TObjectPtr<ABuggyTelemetryActor> Visualizer;
@@ -40,6 +41,9 @@ private:
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextFront;
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextLeft;
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextRight;
+    UPROPERTY() TObjectPtr<UTextBlock> ExportText;
+    UPROPERTY() TObjectPtr<UTextBlock> RayButtonText;
+    UPROPERTY() TObjectPtr<UTextBlock> TruthButtonText;
     UPROPERTY() TObjectPtr<UTextBlock> DemoButtonText;
     UPROPERTY() TObjectPtr<UTextBlock> PauseButtonText;
     float RefreshAccumulator = 0.0f;
