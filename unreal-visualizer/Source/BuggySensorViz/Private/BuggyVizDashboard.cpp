@@ -124,8 +124,15 @@ void UBuggyVizDashboard::BuildInterface()
     Pause->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnTogglePause);
     PauseButtonText = Cast<UTextBlock>(Pause->GetChildAt(0));
     AddButton(Stack, TEXT("CLEAR OBSERVATIONS"))->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnClearMap);
-    AddButton(Stack, TEXT("SHOW / HIDE SENSOR RAYS"))->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnToggleRays);
-    AddButton(Stack, TEXT("SHOW / HIDE DEMO GEOMETRY"))->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnToggleTruth);
+    UButton* ExportButton = AddButton(Stack, TEXT("EXPORT OBSERVATIONS TO CSV"));
+    ExportButton->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnExportPoints);
+    ExportText = AddText(Stack, TEXT("No CSV exported in this session"), 10, VizStyle::Muted);
+    UButton* Rays = AddButton(Stack, TEXT("HIDE SENSOR RAYS"));
+    Rays->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnToggleRays);
+    RayButtonText = Cast<UTextBlock>(Rays->GetChildAt(0));
+    UButton* Truth = AddButton(Stack, TEXT("HIDE DEMO GEOMETRY"));
+    Truth->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnToggleTruth);
+    TruthButtonText = Cast<UTextBlock>(Truth->GetChildAt(0));
     AddButton(Stack, TEXT("TOP / ORBIT CAMERA"))->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnToggleCamera);
     AddButton(Stack, TEXT("FOCUS CAMERA"))->OnClicked.AddDynamic(this, &UBuggyVizDashboard::OnFocusCamera);
 
@@ -189,12 +196,18 @@ void UBuggyVizDashboard::Refresh()
         DemoButtonText->SetText(FText::FromString(Demo ? TEXT("SWITCH TO LIVE STREAM") : TEXT("SWITCH TO DEMO")));
     if (PauseButtonText)
         PauseButtonText->SetText(FText::FromString(Paused ? TEXT("RESUME VISUALIZATION") : TEXT("PAUSE VISUALIZATION")));
+    if (RayButtonText)
+        RayButtonText->SetText(FText::FromString(Visualizer->AreRaysVisible() ? TEXT("HIDE SENSOR RAYS") : TEXT("SHOW SENSOR RAYS")));
+    if (TruthButtonText)
+        TruthButtonText->SetText(FText::FromString(Visualizer->IsDemoGeometryVisible() ? TEXT("HIDE DEMO GEOMETRY") : TEXT("SHOW DEMO GEOMETRY")));
+    if (ExportText) ExportText->SetText(FText::FromString(Visualizer->GetExportStatus()));
 }
 void UBuggyVizDashboard::OnToggleDemo() { if (Visualizer) Visualizer->SetDemoMode(!Visualizer->IsDemoMode()); Refresh(); }
 void UBuggyVizDashboard::OnTogglePause() { if (Visualizer) Visualizer->SetPaused(!Visualizer->IsPaused()); Refresh(); }
 void UBuggyVizDashboard::OnClearMap() { if (Visualizer) Visualizer->ClearObservations(); Refresh(); }
 void UBuggyVizDashboard::OnToggleRays() { if (Visualizer) Visualizer->ToggleRays(); }
 void UBuggyVizDashboard::OnToggleTruth() { if (Visualizer) Visualizer->ToggleDemoGeometry(); }
+void UBuggyVizDashboard::OnExportPoints() { if (Visualizer) Visualizer->ExportObservationsCsv(); Refresh(); }
 void UBuggyVizDashboard::OnToggleCamera()
 {
     if (APlayerController* PC = GetOwningPlayer())
