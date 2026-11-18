@@ -117,11 +117,15 @@ void UBuggyVizDashboard::BuildInterface()
     ProximityText = AddText(Stack, TEXT("PROXIMITY  /  NO VALID RANGE"), 14, VizStyle::Orange, 7);
 
     AddText(Stack, TEXT("VL53L0X  /  DISTANCE CHANNELS"), 14, VizStyle::White, 16);
-    SensorTextFront = AddText(Stack, TEXT("FRONT   -- mm"), 14, VizStyle::Blue, 5);
-    SensorTextLeft = AddText(Stack, TEXT("LEFT   -- mm"), 14, VizStyle::Blue, 5);
-    SensorTextRight = AddText(Stack, TEXT("RIGHT   -- mm"), 14, VizStyle::Blue, 5);
+    SensorBars.SetNum(3);
+    MountInputs.SetNum(3);
     for (int32 i=0; i<3; ++i)
     {
+        UTextBlock* SensorLabel = AddText(Stack, i==0 ? TEXT("FRONT   -- mm") :
+            (i==1 ? TEXT("LEFT   -- mm") : TEXT("RIGHT   -- mm")), 14, VizStyle::Blue, 5);
+        if (i==0) SensorTextFront = SensorLabel;
+        else if (i==1) SensorTextLeft = SensorLabel;
+        else SensorTextRight = SensorLabel;
         SensorBars[i] = WidgetTree->ConstructWidget<UProgressBar>();
         SensorBars[i]->SetPercent(0.f);
         SensorBars[i]->SetFillColorAndOpacity(i==0 ? VizStyle::Lime : (i==1 ? VizStyle::Blue : VizStyle::Orange));
@@ -231,7 +235,7 @@ void UBuggyVizDashboard::Refresh()
             : FString::Printf(TEXT("%s  ---- mm  /  NO VALID HIT"), Names[i]);
         Widgets[i]->SetText(FText::FromString(Value));
         Widgets[i]->SetColorAndOpacity(FSlateColor(Valid ? VizStyle::Lime : VizStyle::Orange));
-        if (SensorBars[i])
+        if (SensorBars.IsValidIndex(i) && SensorBars[i])
         {
             const float Percent = Valid ? 1.f-FMath::Clamp(Mm/2000.f,0.f,1.f) : 0.f;
             SensorBars[i]->SetPercent(Percent);
