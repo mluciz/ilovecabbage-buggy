@@ -68,7 +68,7 @@ One UTF-8 JSON object per datagram, maximum **4096 bytes**, e.g.:
 - `sensors`: exactly three, one each `front`, `left`, `right`. `valid=false` indicates NO VALID HIT, *not* zero distance. Valid range in this prototype is 20–2000 mm.
 - `pose` is **optional**. It must be supplied by a separate externally verified pose estimator; it does **not** come from three VL53L0X range readings or an MPU alone. If absent, the local estimated X/Y stays fixed and gyro Z alone advances yaw (which drifts).
 - `imu` is optional, but if supplied it must include **three gyroscope components** in deg/s, **three accelerometer components** in g, and a positive `dt_s` ≤0.2. Pitch and roll are a basic complementary visualization estimate, not a calibrated orientation measurement.
-- Default simulated sensor angles are front 0°, left +55°, right −55°. These are **unverified mounting assumptions** that can now also be changed through the in-app interface (applying them clears old map points).
+- Default simulated sensor angles are front 0°, left +55°, right −55°. These are **unverified mounting assumptions** that can now also be changed through the in-app interface (applying them clears old map points). Valid changes are saved locally under `Saved/SpatialLab/mounts.json` and restored on the next launch; this is not automatic physical calibration.
 - In the DEMO scene, solid boxes are known **synthetic obstacles**. In external mode, the dots show measured ray endpoints, not reliable reconstructed 3D obstacle bodies. Sensor field-of-view lines are suggestive, not dense scanning.
 - A stale external stream (>1.5 s) invalidates the displayed ranges. Switching modes clears old observations.
 
