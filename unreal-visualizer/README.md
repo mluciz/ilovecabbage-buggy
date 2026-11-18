@@ -2,16 +2,16 @@
 
 An **isolated companion project** for the buggy's **three VL53L0X range sensors + one MPU-6500 IMU**. It does not modify the existing buggy website, Bluetooth controller, releases or Arduino drive firmware. Every project source file lives inside `unreal-visualizer/` on the dedicated feature branch.
 
-**Status:** Source-built prototype; *not* UE-compiled, packaged or hardware-tested by this environment. It contains an internally generated 3D scene and an interactive C++ UMG dashboard. It is intended to become a polished app, not an autonomous navigation system.
+**Status (v0.3):** Unreal 5.4 source prototype with Python tools verified by cross-platform CI; *not* Unreal-compiled, packaged or hardware-tested by this environment. It contains an internally generated 3D scene and an interactive C++ UMG dashboard. It is intended to become a polished app, not an autonomous navigation system.
 
 ## Start the Unreal app — Windows
 
 Requirements: Unreal Engine **5.4** installed from Epic Games Launcher; Visual Studio **2022** with Desktop C++ and Game Development with C++ components (Windows SDK / UE toolchain); a Windows PC capable of UE5.
 
-1. Open `BuggySensorViz.uproject`. If prompted to generate or rebuild C++ project modules, choose Yes. If the build fails, use right-click `BuggySensorViz.uproject` → Generate Visual Studio project files; open the solution; build `Development Editor | Win64`.
+1. Optionally run `launch_doctor.bat` first, to check local project files, Python and ports (the tool does not validate real wiring). Then open `BuggySensorViz.uproject`. If prompted to generate or rebuild C++ project modules, choose Yes. If the build fails, use right-click `BuggySensorViz.uproject` → Generate Visual Studio project files; open the solution; build `Development Editor | Win64`.
 2. Open the default `Entry` map; press **Play**. No handcrafted `.umap` is required: the game mode spawns a buggy, ground grid, five demonstration objects, camera and dashboard.
 3. Default is **INTERNAL SIMULATION**. Watch the front/left/right distance readings and white/green/blue/orange observation markers.
-4. Use the in-app buttons to pause, clear map points, **export observations to CSV** (project `Saved/SpatialLab`), hide rays, hide demo geometry, change camera, focus, or switch to external UDP.
+4. Use the in-app buttons to pause, clear map points, **export observations to CSV** (project `Saved/SpatialLab`), hide rays, hide demo geometry, change camera, focus, or switch to external UDP. You can also cycle **Arena / Corridor / Open Field**, inspect packet rejects and rates, view range bars and edit the three sensor mounting angles.
 5. Controls: `Q/E` orbit; `R/T` camera tilt; `mouse wheel` zoom; `V` top view; `F` focus; `Home` camera reset. Click the 3D viewport first if keyboard focus remains in the UI.
 
 ### External test sender (no hardware)
@@ -32,7 +32,16 @@ Each packet has three independent VL53L0X channels and six MPU-6500 measurement 
 py -3 -m unittest discover -s tests -v
 ```
 
-Or double-click `run_tests.bat`. See [QA matrix](docs/TEST_MATRIX.md).
+Or double-click `run_tests.bat`. GitHub Actions runs tests on both Windows and Linux with Python 3.11 and 3.13. See [QA matrix](docs/TEST_MATRIX.md).
+
+### Record, replay and diagnose sensor sessions
+
+- `launch_doctor.bat`: zero-install preflight of project and UDP setup; physical wiring must still be checked manually.
+- `record_session.bat`: start an independent UDP recording proxy on **127.0.0.1:48764**, writing time-stamped `.jsonl` data in `sessions/` while forwarding valid frames to Unreal on 48765.
+- `py -3 tools/session_tool.py inspect sessions/your_trial.jsonl`: sensor hit/miss counts, range medians and dropout gaps.
+- `py -3 tools/session_tool.py replay sessions/your_trial.jsonl --speed 0.5`: replay captured telemetry in Unreal at half speed.
+
+See [complete UI and session guide](docs/SESSION_AND_UI_GUIDE.md) for wiring-safe examples, camera controls and troubleshooting.
 
 ## UDP schema 2
 
@@ -59,7 +68,7 @@ One UTF-8 JSON object per datagram, maximum **4096 bytes**, e.g.:
 - `sensors`: exactly three, one each `front`, `left`, `right`. `valid=false` indicates NO VALID HIT, *not* zero distance. Valid range in this prototype is 20–2000 mm.
 - `pose` is **optional**. It must be supplied by a separate externally verified pose estimator; it does **not** come from three VL53L0X range readings or an MPU alone. If absent, the local estimated X/Y stays fixed and gyro Z alone advances yaw (which drifts).
 - `imu` is optional, but if supplied it must include **three gyroscope components** in deg/s, **three accelerometer components** in g, and a positive `dt_s` ≤0.2. Pitch and roll are a basic complementary visualization estimate, not a calibrated orientation measurement.
-- Default simulated sensor angles are front 0°, left +55°, right −55°. These are **unverified mounting assumptions** that can be changed in `ABuggyTelemetryActor` properties.
+- Default simulated sensor angles are front 0°, left +55°, right −55°. These are **unverified mounting assumptions** that can now also be changed through the in-app interface (applying them clears old map points).
 - In the DEMO scene, solid boxes are known **synthetic obstacles**. In external mode, the dots show measured ray endpoints, not reliable reconstructed 3D obstacle bodies. Sensor field-of-view lines are suggestive, not dense scanning.
 - A stale external stream (>1.5 s) invalidates the displayed ranges. Switching modes clears old observations.
 
@@ -80,10 +89,10 @@ Replace COM8 with the actual separate sensor port. This cannot silently share th
 
 - `Source/`: Unreal C++ game mode, native dashboard, 3D buggy + floor + synthetic boxes, live ToF ray visualizer, limited observation history and CSV export, orbit/top camera
 - `Config/`: Engine game mode, startup map, input controls
-- `tools/`: strict protocol, external three-channel demo, read-only serial bridge
-- `tests/`: standard-library protocol and geometry unit tests
+- `tools/`: strict protocol, external three-channel demo, read-only serial bridge, localhost recording/replay, preflight doctor and optional Editor material generator
+- `tests/`: standard-library protocol, geometry, recordings/replay and setup preflight tests
 - `firmware/`: **bench-only sensor sketch**, never touched the regular buggy sketch
-- `docs/`: pin audit and QA matrix
+- `docs/`: pin audit, QA matrix, UI and session walkthrough, change log
 
 ## Known limitations
 
