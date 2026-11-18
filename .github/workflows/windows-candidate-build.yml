@@ -20,6 +20,22 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Publish complete source and wiring documentation bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: CABBAGE-v1.8.3-COMPLETE-SOURCE-AND-WIRING
+          path: |
+            controller/*.py
+            controller/*.md
+            controller/*.bat
+            controller/requirements.txt
+            controller/arduino/**/*.ino
+            controller/installer/*.iss
+            controller/tests/*.py
+            controller/tests/firmware_mock/**
+            unreal-visualizer/**
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
