@@ -84,6 +84,29 @@ def audit_sources(base: Path = ROOT) -> tuple[bool, list[str]]:
             lines.extend("  - " + item for item in wrong)
         else:
             lines.append("PASS " + label + ": all seven motor-control pins match")
+    # The Windows app has NO physical GPIO pins. Verify its abstract left/right
+    # command order against the UART encoder and firmware channel mapping.
+    try:
+        bridge = (base / "ble_bridge.py").read_text(encoding="utf-8")
+        app = (base / "app.py").read_text(encoding="utf-8")
+        firmware = main.read_text(encoding="utf-8")
+        checks = (
+            ("BLE sends left PWM then right PWM", "f'M,{left},{right}\\n'" in bridge),
+            ("GUI passes left/right to bridge without swapping", "self.bridge.set_motor(left, right)" in app),
+            ("Firmware decodes leftText then rightText", bool(re.search(
+                r"int left = atoi\(leftText\);\s*int right = atoi\(rightText\);", firmware))),
+            ("Firmware maps left channel to PWMA and right channel to PWMB",
+             "analogWrite(PWMA, l == 0 ? 255 : abs(l))" in firmware and
+             "analogWrite(PWMB, r == 0 ? 255 : abs(r))" in firmware),
+        )
+        for label, passed in checks:
+            lines.append(("PASS" if passed else "FAIL") + " protocol: " + label)
+            if not passed:
+                ok = False
+    except OSError as exc:
+        ok = False
+        lines.append(f"FAIL unable to audit desktop-to-firmware protocol: {exc}")
+
     lines += [
         "",
         "REFERENCE (verify against actual wires with MOTOR BATTERY OFF):",
