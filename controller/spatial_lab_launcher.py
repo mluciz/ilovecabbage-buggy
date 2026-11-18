@@ -66,10 +66,12 @@ def candidate_paths() -> list[Path]:
         paths.append(saved)
     for start in starts:
         paths.extend((
-            start / "unreal-visualizer" / "BuggySensorViz.uproject",
+            # Prefer a packaged Windows visualizer for true one-click use.
             start / "SpatialLab" / "BuggySensorViz.exe",
             start / "unreal-visualizer" / "Windows" / "BuggySensorViz.exe",
             start / "unreal-visualizer" / "Windows" / "BuggySensorViz" / "Binaries" / "Win64" / "BuggySensorViz-Win64-Shipping.exe",
+            # Fallback to a source project (requires UE5.4 + VS toolchain).
+            start / "unreal-visualizer" / "BuggySensorViz.uproject",
         ))
     # Unique by normalized path; never traverse arbitrary paths or execute a shell.
     result, seen = [], set()
