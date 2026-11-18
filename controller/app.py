@@ -1105,8 +1105,30 @@ class BuggyApp:
             self._apply_release_brake()
         self._display_manual_command()
 
+    def _press_combo(self, keys):
+        # Pointer-controlled diagonal movement is always a hold, never a toggle.
+        if self._active_page != 'drive':
+            return
+        for key in keys:
+            self._press(key, source='mouse')
+        self._paint_drive_pad()
+
+    def _release_combo(self, keys):
+        for key in keys:
+            if 'mouse' in self._pressed_sources[key]:
+                self._release(key, source='mouse')
+        self._paint_drive_pad()
+
+    def _paint_drive_pad(self):
+        for key, buttons in getattr(self, 'drive_pad_buttons', {}).items():
+            for button in buttons:
+                label = button.cget('text')
+                combo = set(label.replace(' ', '').split('+'))
+                button.configure(bg='#227969' if combo.issubset(self.pressed) else '#19364e')
+
     def _display_manual_command(self):
         self.keys_var.set('HELD KEYS: ' + (' + '.join(sorted(self.pressed)) if self.pressed else 'none'))
+        self._paint_drive_pad()
         if not self.running:
             left, right = self._manual_wheels()
             suffix = ' (DEMO)' if self.demo else (' (DISCONNECTED)' if not self.online else '')
@@ -1161,7 +1183,13 @@ class BuggyApp:
         self.drive_state_var.set('ACTIVE BRAKE / KEY RELEASE')
 
     def _clear_button_drive(self):
-        # Mouse release does not clear keyboard-held inputs unless window lost focus.
+        """Release ALL pointer inputs on global mouse-up, preserving real keyboard holds.
+
+        Dragging outside a control can skip its own ButtonRelease binding.
+        """
+        for key in 'WASD':
+            if 'mouse' in self._pressed_sources[key]:
+                self._release(key, source='mouse')
         if not self.root.focus_displayof():
             self._release_all_keys()
 
