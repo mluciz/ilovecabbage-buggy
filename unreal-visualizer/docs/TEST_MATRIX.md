@@ -1,6 +1,8 @@
 # Spatial Lab QA checklist
 
 ## Automated, standard-library only
+
+GitHub Actions runs on **Windows and Ubuntu with Python 3.11 and 3.13**. The workflow tests Python syntax, sensor protocol, geometry, recording/replay, one-click doctor and simulation CLI. This is **not** a UE/Windows C++ compiler check.
 `python -m unittest discover -s tests -v`
 
 Tests cover: exactly three unique IDs, unknown/duplicate IDs, bad booleans,
