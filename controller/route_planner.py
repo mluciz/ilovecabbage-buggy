@@ -6,7 +6,13 @@ accuracy requires wheel encoders, calibration, and ideally heading feedback.
 from dataclasses import dataclass
 from math import cos, sin, radians, degrees, pi, hypot
 
-GEARS = {1: 220, 2: 255, 3: 255, 4: 255}  # doubled from original; PWM capped at 255
+# High-output PWM profiles for the existing TB6612FNG motor driver.
+# Four distinct gears: never exceed 8-bit analogWrite(0..255).
+# "Precision" reduces output only slightly for turning/control; it must not
+# default to 110/150 and leave a loaded buggy unable to start moving.
+# This does NOT create extra battery voltage, motor torque or current capacity.
+GEARS = {1: 215, 2: 230, 3: 243, 4: 255}
+PRECISION_GEARS = {1: 200, 2: 218, 3: 235, 4: 255}
 
 
 @dataclass(frozen=True)

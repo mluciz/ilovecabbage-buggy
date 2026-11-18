@@ -2,8 +2,10 @@ from route_planner import GEARS
 from motor_control import manual_wheels
 from pathlib import Path
 
-def test_doubled_gears_saturate_pwm():
-    assert GEARS == {1: 220, 2: 255, 3: 255, 4: 255}
+def test_high_output_gears_are_distinct_and_within_arduino_pwm_limits():
+    assert GEARS == {1: 215, 2: 230, 3: 243, 4: 255}
+    assert len(set(GEARS.values())) == 4
+    assert max(GEARS.values()) == 255
     for gear in GEARS.values():
         assert manual_wheels({"S"}, gear, 50) == (-gear, -gear)
         assert manual_wheels({"W"}, gear, 50) == (gear, gear)

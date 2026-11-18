@@ -74,19 +74,19 @@ def test_precision_mode_changes_manual_pwm_and_latches_brake_when_switched():
         app.toggle_connection()
         root.update()
         app._press('W')
-        assert app._manual_wheels() == (255, 255)  # default BOOST gear 2
+        assert app._manual_wheels() == (230, 230)  # normal high-output gear 2
         app.precision_var.set(True)
         app._precision_changed()
         assert app.brake_latched and not app.pressed
         app._release('W')  # true release is required after mode-change brake
         app._press('W')
-        assert app._manual_wheels() == (150, 150)
+        assert app._manual_wheels() == (218, 218)
         app._release('W')
         assert app.brake_latched
         app.set_gear(1)
-        assert app._manual_pwm() == 110
+        assert app._manual_pwm() == 200
         app.set_gear(4)
-        assert app._manual_pwm() == 240
+        assert app._manual_pwm() == 255
     finally:
         app._shutdown()
         root.destroy()

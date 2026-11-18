@@ -1,11 +1,28 @@
+# v1.8.3 updated HIGH-OUTPUT GEARS
+
+The real BLE controller's distinct PWM drive levels are:
+
+| Gear | Normal | Precision |
+|---|---:|---:|
+| 1 | 215 | 200 |
+| 2 | 230 | 218 |
+| 3 | 243 | 235 |
+| 4 | 255 | 255 |
+
+The prior version silently switched to Precision Gear 1 when the real Bluetooth link connected, using PWM 110, which could struggle against static friction. This version retains the conservative initial connection gear/precision state but uses PWM 200 instead of 110. Gears 2–4 also remain distinct. Precision is an optional modest reduction, not a low-torque crawl.
+
+**Physical limitation:** Arduino analogWrite tops out at PWM 255. The PC app cannot make 255 faster; if Gear 4 is too weak on the floor, measure VM/GND loaded voltage and examine motor driver, battery current capability and gearbox drag. Right faster than left should be diagnosed physically before relying on balance compensation. Never bypass brake, overload, or overvoltage safeguards.
+
+---
+
 # Install CABBAGE Control Studio + Unreal Spatial Lab on Windows
 
 This is a **test candidate**, not yet verified on the real motors or your HM-10 module.
 
 ## Normal installation — no terminal required
 
-1. Download the **CABBAGE-Studio-v1.8.2-Windows-INSTALLER-LIVE** artifact from the latest successful Windows desktop installer build on [GitHub Actions](https://github.com/mluciz/ilovecabbage-buggy/actions/workflows/windows-candidate-build.yml). The build artifact downloads as a ZIP.
-2. In Windows File Explorer, **Extract All**. Double-click **CabbageControlStudio-v1.8.2-Setup-LiveBuggy-CANDIDATE.exe** inside the extracted folder.
+1. Download the **CABBAGE-Studio-v1.8.3-Windows-INSTALLER-FAST-GEARS** artifact from the latest successful Windows desktop installer build on [GitHub Actions](https://github.com/mluciz/ilovecabbage-buggy/actions/workflows/windows-candidate-build.yml). The build artifact downloads as a ZIP.
+2. In Windows File Explorer, **Extract All**. Double-click **CabbageControlStudio-v1.8.3-Setup-FasterGears-CANDIDATE.exe** inside the extracted folder.
 3. Follow the installation wizard. It installs **for your Windows user only**, without a Python installation or administrator account. Tick **Create a desktop shortcut** if desired.
 4. Open **Start → Cabbage Control Studio → Cabbage Control Studio**. The application starts **DISCONNECTED** with the drive disarmed.
 5. The connection row is **REAL BLE / HARDWARE**; it never connects to a buggy without your action. The simulator checkbox and Start Menu shortcut are no longer shown.
@@ -42,7 +59,7 @@ The live app is intended for the existing HM-10 BLE + Arduino Uno + TB6612FNG bu
 
 ## Prefer not to install?
 
-The same Actions run also has **CABBAGE-Studio-v1.8.2-PORTABLE-WITH-SPATIAL-LAB**. Extract its ZIP **with the entire `unreal-visualizer/` folder beside the EXE**, then open `CabbageControlStudio.exe` directly. It is a standalone Windows GUI with an embedded Python runtime. No installer or terminal is required. For permanent use, the installer is more convenient because it adds shortcuts and uninstall support.
+The same Actions run also has **CABBAGE-Studio-v1.8.3-PORTABLE-WITH-SPATIAL-LAB**. Extract its ZIP **with the entire `unreal-visualizer/` folder beside the EXE**, then open `CabbageControlStudio.exe` directly. It is a standalone Windows GUI with an embedded Python runtime. No installer or terminal is required. For permanent use, the installer is more convenient because it adds shortcuts and uninstall support.
 
 ## What the app does **not** do
 

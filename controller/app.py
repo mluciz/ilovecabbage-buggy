@@ -23,7 +23,7 @@ from operator_guide_window import GuideWindow
 from spatial_lab_launcher import (discover_target, save_target, save_editor,
                                   unreal_editor_path, launch as launch_spatial_lab,
                                   SpatialLabLaunchError, UnrealEditorNotFound)
-from route_planner import Planner, GEARS, sample_path, route_pose
+from route_planner import Planner, GEARS, PRECISION_GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
 from link_stress_lab import offline_link_stress_check
@@ -44,7 +44,7 @@ BLUE = '#567ee5'
 class BuggyApp:
     def __init__(self, root):
         self.root = root
-        root.title('CABBAGE / Buggy Control Studio v1.8.2 — Live Buggy + Spatial Lab candidate')
+        root.title('CABBAGE / Buggy Control Studio v1.8.3 — High-Output Gears + Spatial Lab candidate')
         root.geometry('1380x900')
         root.minsize(1020, 690)
         root.configure(bg=BG)
@@ -436,7 +436,7 @@ class BuggyApp:
                      color='#345476', width=22).pack(fill='x', padx=15, pady=(0, 5))
         self._button(manual, 'OFFLINE LINK STRESS', self.run_link_stress_check,
                      color='#345476', width=22).pack(fill='x', padx=15, pady=(0, 5))
-        tk.Checkbutton(manual, text='Precision drive (optional, slower distinct gears)',
+        tk.Checkbutton(manual, text='Precision control (still high-output PWM)',
                        variable=self.precision_var, command=self._precision_changed,
                        bg=CARD, fg=CYAN, selectcolor=CARD_DARK,
                        activebackground=CARD, activeforeground=TEXT,
@@ -1019,8 +1019,7 @@ class BuggyApp:
         return f'GEAR {self.gear} / PWM {value}' + (' (PRECISION)' if self.precision_var.get() else '')
 
     def _manual_pwm(self):
-        precision = {1: 110, 2: 150, 3: 200, 4: 240}
-        return precision[self.gear] if self.precision_var.get() else GEARS[self.gear]
+        return PRECISION_GEARS[self.gear] if self.precision_var.get() else GEARS[self.gear]
 
     def run_offline_check(self):
         """No drive commands; checks command calculations and packet formatting."""
@@ -1393,7 +1392,7 @@ class BuggyApp:
         self.gear_info_var.set(self._gear_caption())
         self.last_input_var.set(f'INPUT: gear {gear} selected ({self._gear_caption()})')
         self._display_manual_command()
-        self.log(f'Gear {gear} / PWM {GEARS[gear]}')
+        self.log(f'{self._gear_caption()} selected; PWM is a commanded duty cycle, not measured wheel speed')
         if not self.running:
             self.preview_route(log_errors=False)
 

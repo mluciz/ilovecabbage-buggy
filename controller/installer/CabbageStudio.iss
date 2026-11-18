@@ -2,7 +2,7 @@
 ; Build ONLY on Windows after PyInstaller creates dist\CabbageControlStudio.exe
 ; No auto-start, no system drivers, no Arduino flashing, no elevated privileges.
 #define MyAppName "Cabbage Control Studio"
-#define MyAppVersion "1.8.2"
+#define MyAppVersion "1.8.3"
 #define MyAppExeName "CabbageControlStudio.exe"
 
 [Setup]
@@ -24,10 +24,10 @@ WizardStyle=modern
 DisableProgramGroupPage=yes
 AllowNoIcons=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
-UninstallDisplayName=Cabbage Control Studio (v1.8.2 Live Buggy Candidate)
+UninstallDisplayName=Cabbage Control Studio (v1.8.3 High-Output Gears Candidate)
 SetupIconFile=..\branding\CabbageStudio.ico
 OutputDir=..\dist\installer
-OutputBaseFilename=CabbageControlStudio-v1.8.2-Setup-LiveBuggy-CANDIDATE
+OutputBaseFilename=CabbageControlStudio-v1.8.3-Setup-FasterGears-CANDIDATE
 Compression=lzma2
 SolidCompression=yes
 SetupLogging=yes
