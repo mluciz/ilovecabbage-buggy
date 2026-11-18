@@ -120,13 +120,13 @@ bool ABuggyTelemetryActor::ExportObservationsCsv()
     }
     const FString Name = FString::Printf(TEXT("observations_%s.csv"), *FDateTime::UtcNow().ToString(TEXT("%Y%m%d_%H%M%S")));
     const FString File = FPaths::Combine(Folder, Name);
-    FString Csv = TEXT("sensor,x_m,y_m,z_m,age_s,frame_quality\\n");
+    FString Csv = TEXT("sensor,x_m,y_m,z_m,age_s,frame_quality\n");
     const double Now = FPlatformTime::Seconds();
     static const TCHAR* Names[3] = {TEXT("front"),TEXT("left"),TEXT("right")};
     for (const FObservedPoint& P : Observations)
     {
         const TCHAR* Quality = bDemoMode ? TEXT("synthetic") : (bExternalPose ? TEXT("unverified_external_pose") : TEXT("no_xy_pose"));
-        Csv += FString::Printf(TEXT("%s,%.4f,%.4f,%.4f,%.3f,%s\\n"),
+        Csv += FString::Printf(TEXT("%s,%.4f,%.4f,%.4f,%.3f,%s\n"),
             Names[FMath::Clamp(P.SensorIndex,0,2)], P.Position.X/100.f, P.Position.Y/100.f,
             P.Position.Z/100.f, Now-P.TimeSeconds, Quality);
     }
