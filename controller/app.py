@@ -13,6 +13,7 @@ from tkinter import ttk, messagebox, filedialog
 from ble_bridge import BLEBridge, BLEAK_ERROR
 from diagnostics import DiagnosticReport, interpret_error, usb_port_diagnosis
 from diagnostic_window import DiagnosticWindow
+from wheel_doctor_window import WheelDoctorWindow
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
@@ -34,9 +35,9 @@ BLUE = '#447bd0'
 class BuggyApp:
     def __init__(self, root):
         self.root = root
-        root.title('Buggy Control Center v1.6.5-safety — Control Lab (TEST)')
-        root.geometry('1190x920')
-        root.minsize(1050, 820)
+        root.title('Buggy Control Center / Field Lab v1.7 CANDIDATE — bench-test only')
+        root.geometry('1280x900')
+        root.minsize(1000, 700)
         root.configure(bg=BG)
 
         self._closed = False
@@ -79,6 +80,9 @@ class BuggyApp:
         self.telemetry_support = 'NOT CONNECTED'
         self.diagnosis = DiagnosticReport()
         self.diagnostic_window = None
+        self.wheel_doctor_window = None
+        self.wheel_probe_active = False
+        self.firmware_version = 0
         self.diag_phase = 'idle'
         self.diag_target = None
         self.diag_deadline = 0.0
@@ -111,6 +115,7 @@ class BuggyApp:
         self.balance_var = tk.IntVar(value=0)  # 0=matched outputs, + favors right
         self.balance_info_var = tk.StringVar(value="MOTOR BALANCE 0% (equal)")
         self.link_health_var = tk.StringVar(value="COMMAND LINK: disconnected")
+        self.quick_health_var = tk.StringVar(value="OFFLINE  /  Motors locked  /  Pin map available")
         self.steering_info_var = tk.StringVar(value='STEERING 50%')
         self.drive_state_var = tk.StringVar(value='ACTIVE BRAKE / STOPPED')
         self.telemetry_link_var = tk.StringVar(value='ARDUINO: NOT CONNECTED')
@@ -126,6 +131,7 @@ class BuggyApp:
         self.steering_var.trace_add('write', lambda *_: self._steering_changed())
         self.balance_var.trace_add('write', lambda *_: self._balance_changed())
         self._bind_keys()
+        self.root.bind_all('<F1>', lambda _e: self.open_wheel_doctor(), add='+')
         self.root.protocol('WM_DELETE_WINDOW', self._quit)
         self._preview_after = self.root.after(180, self.preview_route)
         self._tick_after = self.root.after(80, self._tick)
@@ -170,7 +176,7 @@ class BuggyApp:
         header.pack(fill='x', padx=20, pady=(15, 8))
         tk.Label(header, text='BUGGY', fg=CYAN, bg=BG,
                  font=('Segoe UI', 26, 'bold')).pack(side='left')
-        tk.Label(header, text=' / CONTROL CENTER', fg=TEXT, bg=BG,
+        tk.Label(header, text=' / FIELD CONSOLE', fg=TEXT, bg=BG,
                  font=('Segoe UI', 17, 'bold')).pack(side='left', pady=(6, 0))
         tk.Label(header, textvariable=self.status_var, fg=AMBER, bg=BG,
                  font=('Segoe UI', 11, 'bold')).pack(side='right', pady=(8, 0))
@@ -193,6 +199,17 @@ class BuggyApp:
         self.connect_btn.pack(side='left')
         self._button(row, 'DIAGNOSTICS', self.open_diagnostics, color='#6b528f',
                      width=13).pack(side='left', padx=(10, 0))
+
+        self._button(row, 'WHEEL DOCTOR', self.open_wheel_doctor, color='#177e79',
+                     width=15).pack(side='left', padx=(8, 0))
+        health = tk.Frame(self.root, bg=CARD_DARK, highlightbackground=BORDER, highlightthickness=1)
+        health.pack(fill='x', padx=20, pady=(0, 12))
+        tk.Label(health, text='LIVE SAFETY / CONNECTION', bg=CARD_DARK, fg=CYAN,
+                 font=('Segoe UI', 9, 'bold')).pack(side='left', padx=(12, 12), pady=8)
+        tk.Label(health, textvariable=self.quick_health_var, bg=CARD_DARK, fg=TEXT,
+                 font=('Segoe UI', 10), anchor='w').pack(side='left', fill='x', expand=True)
+        self._button(health, 'PIN + WHEEL HELP [F1]', self.open_wheel_doctor,
+                     color='#28546a', width=21).pack(side='right', padx=8, pady=5)
 
         work = tk.Frame(self.root, bg=BG)
         work.pack(fill='both', expand=True, padx=20)
@@ -424,6 +441,33 @@ class BuggyApp:
             self.diagnostic_window.top.lift()
             self.diagnostic_window.top.focus_force()
 
+    def open_wheel_doctor(self):
+        # Suppress all ordinary drive commands before opening live diagnostics.
+        self.emergency_stop(quiet=True)
+        if self.wheel_doctor_window is None:
+            self.wheel_doctor_window = WheelDoctorWindow(self)
+        else:
+            self.wheel_doctor_window.top.lift()
+        if self.online and not self.demo:
+            self.bridge.probe_version()
+
+    def start_wheel_probe(self, left, right):
+        """UI-opt-in single 450 ms pulse. BLE bridge enforces protocol gate too."""
+        if (not self.online or self.demo or self.firmware_version != 165 or
+                self.wheel_probe_active or self.running or self.diagnosis.is_running):
+            return False
+        if max(abs(int(left)), abs(int(right))) > 150:
+            return False
+        self.emergency_stop(quiet=True)
+        self.wheel_probe_active = True
+        if not self.bridge.pulse_wheel(left, right):
+            self.wheel_probe_active = False
+            return False
+        self.flight.record('WHEEL_DOCTOR', 'BENCH_PULSE_REQUEST',
+                           f'left={left}; right={right}; request=450ms; wheel motion not sensed')
+        self.log(f'BENCH TEST REQUEST: L{left:+d} R{right:+d}; observe wheel and use power switch if unsafe.')
+        return True
+
     def _finish_diagnostics(self):
         if self.diagnosis.is_running:
             for key, check in list(self.diagnosis.checks.items()):
@@ -623,6 +667,9 @@ class BuggyApp:
 
     def activate_keyboard(self):
         """Re-arm WASD safely when user explicitly activates manual driving."""
+        if self.wheel_probe_active:
+            self.log("WASD cannot arm during a Wheel Doctor bench pulse.")
+            return
         self._release_all_keys()
         self.drive_panel.focus_set()
         # A missed KeyRelease after an emergency stop should not lock out
@@ -685,7 +732,7 @@ class BuggyApp:
             self.diagnosis.set('keyboard', 'PASS', f'Received physical key {key}; no motor command sent')
             self.last_input_var.set(f'INPUT DIAGNOSTIC: {key} received safely')
             return 'break'
-        if self.diagnosis.is_running and key in ('W', 'A', 'S', 'D', '1', '2', '3', '4'):
+        if (self.diagnosis.is_running or self.wheel_probe_active) and key in ('W', 'A', 'S', 'D', '1', '2', '3', '4'):
             self.last_input_var.set(f'DIAGNOSTICS ACTIVE: {key} detected; driving suppressed')
             return 'break'
         # ESC remains a global emergency stop even while editing route text.
@@ -787,7 +834,7 @@ class BuggyApp:
             self.command_var.set(f'L {left:+4d}   |   R {right:+4d}   |   GEAR {self.gear}{suffix}')
 
     def _press(self, key, source='api'):
-        if self.diagnosis.is_running or self.keyboard_test_active:
+        if self.diagnosis.is_running or self.keyboard_test_active or self.wheel_probe_active:
             self.last_input_var.set(f'INPUT: {key} detected; driving suppressed during diagnostics')
             return
         if self.running:
@@ -904,6 +951,7 @@ class BuggyApp:
         self.link_gatt = None
         self.link_notify_state = None
         self.telemetry_support = 'WAITING FOR ARDUINO'
+        self.firmware_version = 0
         self.bridge.connect(choice, self.uuid_var.get())
 
     def _connection_label(self, connected):
@@ -946,6 +994,7 @@ class BuggyApp:
                 self.demo = False
                 self.online = True
                 self.brake_latched = True  # don't move simply because BLE connected
+                self.firmware_version = 0
                 # Safe real-hardware defaults, without changing demo expectations.
                 self.precision_var.set(True)
                 self.set_gear(1)
@@ -958,6 +1007,7 @@ class BuggyApp:
                 self._connection_label(True)
                 self.flight.record('LINK', 'CONNECTED', str(payload))
                 self.log(f'BLE connected: {payload}. FFE1 motor stream active.')
+                self.bridge.probe_version()
                 if self.diag_phase == 'connect':
                     self.diagnosis.set('link', 'PASS', 'BLE link connected')
                     self._start_firmware_probe()
@@ -979,6 +1029,8 @@ class BuggyApp:
                     self._finish_diagnostics()
                 self.link_gatt = None
                 self.link_notify_state = None
+                self.firmware_version = 0
+                self.wheel_probe_active = False
             elif kind == 'telemetry_state':
                 self.telemetry_support = str(payload)
                 if self.online and not self.demo:
@@ -1010,6 +1062,19 @@ class BuggyApp:
                     self.log('SAFETY: Arduino watchdog braked. Release all keys before attempting to drive again.')
                     self.flight.record('SAFETY', 'ARDUINO_WATCHDOG', 'Motor packet stream interrupted')
                     self.emergency_stop(quiet=True)
+            elif kind == 'firmware_version':
+                self.firmware_version = int(payload)
+                self.log(f'Firmware capability V,{self.firmware_version} replied over UART (not physical proof).')
+            elif kind == 'version_error':
+                self.log('Firmware capability could not be verified: ' + str(payload))
+            elif kind == 'wheel_pulse_done':
+                self.wheel_probe_active = False
+                self.brake_latched = True
+                self.bridge.latch_emergency()
+                self.flight.record('WHEEL_DOCTOR', 'BENCH_PULSE_ENDED', str(payload))
+                self.log('WHEEL DOCTOR: ' + str(payload))
+                if self.wheel_doctor_window is not None:
+                    self.wheel_doctor_window.summary.set(str(payload))
             elif kind == 'tx_stats':
                 self.tx_count = int(payload)
             elif kind == 'scan_started':
@@ -1101,7 +1166,7 @@ class BuggyApp:
                 messagebox.showerror('Track parameters', str(exc))
 
     def start_route(self):
-        if self.diagnosis.is_running or self.keyboard_test_active:
+        if self.diagnosis.is_running or self.keyboard_test_active or self.wheel_probe_active:
             messagebox.showwarning('Diagnostics active', 'Finish the non-driving diagnostics before running a route.')
             return
         if not self.online:
@@ -1206,6 +1271,16 @@ class BuggyApp:
             self.log(f'SAFETY STOP: UI stalled {raw_dt:.1f}s; release keys then reactivate WASD.')
         self._events()
         self._reconcile_physical_keys()
+        if self.wheel_doctor_window is not None:
+            self.wheel_doctor_window.refresh()
+        if not self.online:
+            self.quick_health_var.set('DISCONNECTED  /  No motion check  /  Open PIN AUDIT')
+        elif self.demo:
+            self.quick_health_var.set('DEMO  /  Simulated motors  /  No hardware proof')
+        elif self.firmware_version == 165:
+            self.quick_health_var.set('BLE LINKED  /  Firmware V,165  /  Physical motion UNVERIFIED')
+        else:
+            self.quick_health_var.set('BLE LINKED  /  Firmware unverified  /  No wheel pulses')
         self._diagnostic_clock(now)
         if self.diagnosis.started_at and not self.diagnosis.is_running and self.online and not self.demo:
             if self.diagnosis.checks['telemetry'].status in ('PASS', 'WARN'):
@@ -1383,6 +1458,7 @@ class BuggyApp:
             return
         self._closed = True
         self.emergency_stop(quiet=True)
+        self.wheel_probe_active = False
         for after_id in (self._tick_after, self._preview_after, self._focus_after):
             if after_id is not None:
                 try:
