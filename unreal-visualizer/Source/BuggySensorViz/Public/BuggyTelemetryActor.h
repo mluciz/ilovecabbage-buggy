@@ -42,6 +42,13 @@ public:
     int32 GetObservationLimit() const { return MaxObservationCount; }
     int32 GetPacketCount() const { return AcceptedPacketCount; }
     int32 GetRejectedPacketCount() const { return RejectedPacketCount; }
+    int32 GetRecentPacketRateHz() const;
+    float GetClosestValidRangeMm() const;
+    float GetMountAngle(int32 Index) const;
+    bool SetMountAngles(float Front, float Left, float Right);
+    int32 GetDemoScenario() const { return DemoScenarioIndex; }
+    FString GetDemoScenarioName() const;
+    void CycleDemoScenario();
     bool HasExternalPose() const { return bExternalPose; }
     double GetStreamAgeSeconds() const;
     void SetDemoMode(bool bEnabled);
@@ -66,6 +73,8 @@ private:
         FVector Position = FVector::ZeroVector;
         int32 SensorIndex = 0;
         double TimeSeconds = 0.0;
+        bool bSynthetic = false;
+        bool bHasPose = false;
     };
     struct FDemoObstacle
     {
@@ -79,6 +88,7 @@ private:
     void DrawWorld();
     void BuildDemoScene();
     void SetDemoGeometryVisibility();
+    void ApplyDemoScenario();
     void RecordObservation(int32 SensorIndex, float DistanceMm, double Now);
     FVector SensorOrigin(int32 SensorIndex) const;
     FVector SensorDirection(int32 SensorIndex) const;
@@ -100,6 +110,7 @@ private:
     FSocket* Socket = nullptr;
     FSensorReading Readings[3];
     TArray<FObservedPoint> Observations;
+    TArray<double> RecentPacketTimes;
     TArray<FDemoObstacle> DemoBoxes;
     double LastPacketAt = -1.0;
     double LastPointAt[3] = {-1.0,-1.0,-1.0};
@@ -110,6 +121,7 @@ private:
     FVector LastGyroscopeDps = FVector::ZeroVector;
     bool bHaveImu = false;
     float DemoTimeSeconds = 0.0f;
+    int32 DemoScenarioIndex = 0;
     int32 AcceptedPacketCount = 0;
     int32 RejectedPacketCount = 0;
     bool bDemoMode = true;
