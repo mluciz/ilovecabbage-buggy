@@ -1,3 +1,19 @@
+# CABBAGE Control Studio v1.8 — Premium Operator Interface (development candidate)
+
+**New in v1.8:** redesigned Drive / Routes / System workspaces; a nine-direction hold-to-drive cockpit; large live left/right PWM command diagram; link-path visualization; atomic pointer release; live-tuning safety brakes; validated Save/Reset Tuning; Power Path Lab for Bluetooth power loss on batteries; Quick Preflight; searchable Operator Guide; and a test-only Windows EXE build workflow.
+
+**First launch (Windows):** Use `demo.bat` to explore with no motors or BLE connection. Use `run.bat` to open the Bluetooth-enabled controller only once physical power and wiring have been inspected. The root window starts on the **Drive** workspace, and hardware movement always needs a deliberate arm. Hold the direction pad or W/A/S/D; release to brake. Press ESC/Space or the red Emergency Stop at any point. F1 opens Wheel Doctor. The **System** workspace includes Quick Preflight, Power Path Lab, full BLE diagnostics and a searchable Operator Guide.
+
+**Testing:** Open `offline_tests.bat` or use **System → Quick Preflight** while offline to run the pin/protocol, control-math and synthetic BLE link checks. `PIN_AUDIT.bat` checks source wiring declarations without energizing any hardware. The **Windows candidate packaging** GitHub Actions run builds `Cabbage-Studio-v18-CANDIDATE.exe` as an artifact for Windows; the branch also retains the `build_windows_candidate.bat` local build launcher. Neither a successful Windows build nor passing tests proves real motor rotation or braking.
+
+**Design review and detailed operator guidance:** [V18_DESIGN_AUDIT.md](V18_DESIGN_AUDIT.md) and [WHEEL_DOCTOR_FIELD_GUIDE.md](WHEEL_DOCTOR_FIELD_GUIDE.md).
+
+**Safety status:** Experimental, unmerged and not validated on the actual buggy. The old production release is untouched. Do not assume HM-10 VCC tolerates 5V, and do not mistake a USB-powered Arduino LED or firmware PWM feedback for a validated motor supply or wheel sensor. Keep the motor power switch accessible and raise both wheels for preliminary testing. Never rewire under power.
+
+---
+
+## Historical v1.7 Wheel Doctor documentation
+
 # Buggy Control Center — v1.7 Wheel Doctor Field Lab (development candidate)
 
 **This is an unmerged candidate built on the v1.6.5-safety pull-request branch, not the stable v1.6.4 download. No one has certified these changes on a physical buggy. Do not drive on the floor until both independent wheels and braking pass the physical check.** Keep your existing v1.6.4 files for rollback.
