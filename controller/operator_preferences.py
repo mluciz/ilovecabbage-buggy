@@ -52,7 +52,7 @@ def normalize(raw: dict | None) -> dict:
         except (ValueError, TypeError, OverflowError):
             continue
         if 0.1 <= v <= 500 and v == v:
-            data[key] = str(round(v, 3))
+            data[key] = str(round(v, 3)).rstrip("0").rstrip(".")
     return data
 
 
