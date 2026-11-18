@@ -1106,18 +1106,43 @@ class BuggyApp:
         self._display_manual_command()
 
     def _press_combo(self, keys):
-        # Pointer-controlled diagonal movement is always a hold, never a toggle.
-        if self._active_page != 'drive':
+        """Apply a diagonal as ONE atomic left/right intent, not W then A pulses."""
+        if self._active_page != 'drive' or self.diagnosis.is_running or self.keyboard_test_active or self.wheel_probe_active:
+            return
+        if self.running:
+            self.emergency_stop(quiet=True)
+            return
+        if any(k in self._blocked_drive_keys for k in keys):
+            return
+        if self.online and not self.demo and getattr(self.bridge, '_emergency_latched', False):
+            self.last_input_var.set('INPUT: E-STOP active — ACTIVATE WASD before mouse driving')
             return
         for key in keys:
-            self._press(key, source='mouse')
-        self._paint_drive_pad()
+            self._pressed_sources[key].add('mouse')
+            self.pressed.add(key)
+            self.flight.record('INPUT', f'{key}_DOWN', 'mouse-pad')
+        self.brake_latched = False
+        if self.online and not self.demo:
+            self.bridge.set_motor(*self._manual_wheels())
+        self.last_input_var.set('INPUT: ' + '+'.join(keys) + ' / POINTER HELD')
+        self._display_manual_command()
 
     def _release_combo(self, keys):
+        changed = False
         for key in keys:
             if 'mouse' in self._pressed_sources[key]:
-                self._release(key, source='mouse')
-        self._paint_drive_pad()
+                self._pressed_sources[key].discard('mouse')
+                if not self._pressed_sources[key]:
+                    self.pressed.discard(key)
+                self.flight.record('INPUT', f'{key}_UP', 'mouse-pad')
+                changed = True
+        if not changed:
+            return
+        if not self.pressed and not self.running:
+            self._apply_release_brake()
+        elif self.online and not self.demo:
+            self.bridge.set_motor(*self._manual_wheels())
+        self._display_manual_command()
 
     def _paint_drive_pad(self):
         for key, buttons in getattr(self, 'drive_pad_buttons', {}).items():
