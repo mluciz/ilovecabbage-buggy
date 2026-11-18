@@ -155,12 +155,13 @@ def test_manual_balance_affects_manual_but_not_route():
     try:
         app.balance_var.set(30)
         app._press('W')
-        assert app._manual_wheels() == (178, 255)  # default gear 2
+        assert app._manual_wheels() == (161, 230)  # default high-output gear 2, 30% left reduction
         app._release('W')
         assert app.brake_latched
         app.preview_route()
         assert app.route
-        assert any(segment.left == 255 or segment.right == 255 for segment in app.route)
+        from route_planner import GEARS
+        assert any(abs(segment.left) == GEARS[app.gear] or abs(segment.right) == GEARS[app.gear] for segment in app.route)
         app._shutdown()
     finally:
         root.destroy()
