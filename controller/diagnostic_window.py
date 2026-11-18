@@ -15,7 +15,7 @@ class DiagnosticWindow:
     def __init__(self, app):
         self.app = app
         self.top = tk.Toplevel(app.root)
-        self.top.title('BUGGY / Connection & Hardware Diagnostics v1.6.3')
+        self.top.title('BUGGY / Connection & Hardware Diagnostics v1.7 candidate')
         self.top.geometry('1030x760')
         self.top.minsize(860, 670)
         self.top.configure(bg=BG)
@@ -32,6 +32,7 @@ class DiagnosticWindow:
             ('COPY REPORT', self.copy_report, '#325373'),
             ('SAVE REPORT', self.save_report, '#325373'),
             ('WIRING CHECKLIST', self.wiring_checklist, '#6b528f'),
+            ('WHEEL DOCTOR', app.open_wheel_doctor, '#177e79'),
         ]:
             tk.Button(actions, text=title, command=cmd, bg=color, fg='white',
                       activebackground=CYAN, relief='flat', padx=12, pady=9,
@@ -145,7 +146,7 @@ class DiagnosticWindow:
     def wiring_checklist(self):
         dialog = tk.Toplevel(self.top)
         dialog.title('Manual wiring checklist — user observations')
-        dialog.geometry('620x465')
+        dialog.geometry('690x570')
         dialog.configure(bg=BG)
         dialog.transient(self.top)
         tk.Label(dialog, text='CHECK WITH POWER OFF (EXCEPT METER TESTS)', bg=BG, fg=AMBER,
@@ -154,16 +155,21 @@ class DiagnosticWindow:
             'Battery + through switch to VM; battery - to GND',
             'Arduino 5V to driver VCC (NOT VM)',
             'Arduino, battery and motor driver share GND',
-            'Arduino D4 to STBY; D5/D6 PWM wires in place',
+            'Arduino D4 to STBY, ideally with 10k GND pulldown',
+            'Uno D5 to PWMA and D6 to PWMB (PWM-capable)',
+            'Uno D7/D8 to AIN1/AIN2 for LEFT motor A',
+            'Uno D9/D10 to BIN1/BIN2 for RIGHT motor B',
             'HM-10 TXD to Uno D2; Uno D3 to RXD via 3.3V divider',
             'Motor A to AO1/AO2; Motor B to BO1/BO2',
-            'MotorTest.ino physically spun both wheels (wheels raised)',
+            'Right motor BO output wiring insulated / secure',
+            'MotorTest.ino individually passed all six steps (wheels raised)',
+            'Both wheels physically stopped after each command'
         ]
         states = [tk.BooleanVar(value=False) for _ in checks]
         for text, variable in zip(checks, states):
             tk.Checkbutton(dialog, text=text, variable=variable, bg=BG, fg=TEXT,
                            selectcolor=CARD, activebackground=BG, activeforeground=TEXT,
-                           justify='left', font=('Segoe UI', 10)).pack(anchor='w', padx=18, pady=5)
+                           justify='left', font=('Segoe UI', 9)).pack(anchor='w', padx=18, pady=3)
         tk.Label(dialog, text='These boxes are your observations — NOT sensor measurements.',
                  bg=BG, fg=AMBER, font=('Segoe UI', 9)).pack(anchor='w', padx=20, pady=8)
         def record():
