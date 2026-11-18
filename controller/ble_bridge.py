@@ -323,6 +323,10 @@ class BLEBridge:
         """
         async with self._write_lock:
             with self._lock:
+                # Wheel Doctor owns the UART exclusively until K/X is sent.
+                # A routine idle K must not interrupt an isolated motor pulse.
+                if getattr(self, '_pulse_active', False):
+                    return
                 left, right = self._motor
                 now_braking = self._brake
                 age = time.monotonic() - self._updated
@@ -360,7 +364,13 @@ class BLEBridge:
     async def _stream(self):
         try:
             while self.client and self.client.is_connected:
-                # _send computes current state only once it gets the lock.
+                with self._lock:
+                    bench_pulse = getattr(self, '_pulse_active', False)
+                if bench_pulse:
+                    # Only the guarded pulse task may own the BLE write channel.
+                    await asyncio.sleep(0.05)
+                    continue
+                # _send independently checks the guard after taking the UART lock.
                 await self._send()
                 self._tx_count += 1
                 if time.monotonic() - self._last_tx_report > 0.5:
