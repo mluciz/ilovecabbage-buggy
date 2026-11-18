@@ -251,3 +251,18 @@ class TestStudioTk:
         assert self.app.guide_window.find_next()
         self.app.guide_window.close()
         assert self.app.guide_window is None
+
+    def test_auxiliary_window_search_input_keeps_wasd_and_digit_typing(self):
+        top = tk.Toplevel(self.root)
+        field = tk.Entry(top)
+        field.pack()
+        class E:
+            keysym = 'w'
+            char = 'w'
+            widget = field
+        assert self.app._key_down(E()) is None
+        E.keysym = '3'
+        E.char = '3'
+        assert self.app._key_down(E()) is None
+        assert not self.app.pressed
+        top.destroy()
