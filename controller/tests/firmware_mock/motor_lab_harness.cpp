@@ -53,5 +53,18 @@ int main() {
     assert(Serial.output.find("LEFT REVERSE") != std::string::npos);
     assert(Serial.output.find("RIGHT REVERSE") != std::string::npos);
     assert(Serial.output.find("COMPLETE") != std::string::npos);
+    // Single key 4: right reverse only, auto-brake; no accidental next step.
+    Serial.inject("4");
+    loop();
+    assert(singleStep && running && step == 3);
+    assert(pin_pwm[5] == 255 && pin_pwm[6] == TEST_PWM);
+    assert(pin_digital[9] == LOW && pin_digital[10] == HIGH);
+    advance(RUN_MS);
+    assert(!running);
+    braked();
+    advance(GAP_MS + RUN_MS + 500);
+    assert(!running);
+    braked();
+
     std::cout << "motor lab: startup, independent direction channels, abort and six braking gaps PASS\n";
 }
