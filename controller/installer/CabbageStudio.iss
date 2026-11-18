@@ -47,6 +47,7 @@ Source: "..\dist\CabbageControlStudio.exe"; DestDir: "{app}"; Flags: ignoreversi
 Source: "..\WHEEL_DOCTOR_FIELD_GUIDE.md"; DestDir: "{app}\Docs"; Flags: ignoreversion
 Source: "..\V18_DESIGN_AUDIT.md"; DestDir: "{app}\Docs"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}\Docs"; Flags: ignoreversion
+Source: "..\INSTALL_WINDOWS.md"; DestDir: "{app}\Docs"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Cabbage Control Studio"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "Open the buggy controller (starts disconnected)"
