@@ -48,8 +48,8 @@ private:
     UPROPERTY() TObjectPtr<UTextBlock> ScenarioText;
     UPROPERTY() TObjectPtr<UTextBlock> CalibrationText;
     UPROPERTY() TObjectPtr<UTextBlock> HelpText;
-    UPROPERTY() TObjectPtr<UProgressBar> SensorBars[3];
-    UPROPERTY() TObjectPtr<UEditableTextBox> MountInputs[3];
+    UPROPERTY(Transient) TArray<TObjectPtr<UProgressBar>> SensorBars;
+    UPROPERTY(Transient) TArray<TObjectPtr<UEditableTextBox>> MountInputs;
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextFront;
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextLeft;
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextRight;
