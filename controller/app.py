@@ -1040,7 +1040,7 @@ class BuggyApp:
         # Entries and route-editor text always receive typed digits/letters,
         # even outside the DRIVE workspace. Only MOTOR shortcuts are blocked.
         if self._typing(event.widget):
-            self.last_input_var.set(f'INPUT: {key} is text input, not a motor command')
+            self.last_input_var.set(f'INPUT: {key} ignored as MOTOR command — typing continues in the text field')
             return
         if self._active_page != 'drive' and key in ('W', 'A', 'S', 'D', '1', '2', '3', '4'):
             self.last_input_var.set('INPUT: open DRIVE workspace and ACTIVATE WASD first')
