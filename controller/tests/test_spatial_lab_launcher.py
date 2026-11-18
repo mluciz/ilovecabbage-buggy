@@ -127,3 +127,86 @@ def test_studio_offline_starts_visualizer_only():
             instance.emergency_stop.assert_called_once_with(quiet=True)
             spawn.assert_called_once_with(project)
             instance.flight.record.assert_called_once()
+
+def test_user_can_select_unreal_editor_in_custom_install_and_reopen(tmp_path):
+    from spatial_lab_launcher import (save_editor, stored_editor, unreal_editor_path,
+                                      validate_editor, editor_settings_path)
+    editor = tmp_path / "OtherDrive" / "UE_5.4" / "Engine" / "Binaries" / "Win64" / "UnrealEditor.exe"
+    editor.parent.mkdir(parents=True)
+    editor.write_bytes(b"test")
+    pref = tmp_path / "settings" / "unreal_editor.json"
+    with patch("spatial_lab_launcher.editor_settings_path", return_value=pref), \\
+         patch.dict(os.environ, {"UE_ROOT": str(tmp_path / "missing")}, clear=False):
+        assert validate_editor(editor) == editor.resolve()
+        assert save_editor(editor) == editor.resolve()
+        assert stored_editor() == editor.resolve()
+        assert unreal_editor_path() == editor.resolve()
+        data = json.loads(pref.read_text(encoding="utf-8"))
+        assert set(data) == {"schema", "editor_path"}
+        assert "motor" not in pref.read_text().lower()
+        editor.unlink()
+        assert stored_editor() is None
+
+def test_refuse_non_unreal_exe_in_editor_selection(tmp_path):
+    from spatial_lab_launcher import validate_editor
+    wrong = tmp_path / "EpicGamesLauncher.exe"
+    wrong.write_bytes(b"test")
+    try:
+        validate_editor(wrong)
+        assert False, "Must reject unrelated executable"
+    except SpatialLabLaunchError as exc:
+        assert "UnrealEditor.exe" in str(exc)
+
+def test_missing_editor_raises_specific_actionable_exception(tmp_path):
+    from spatial_lab_launcher import UnrealEditorNotFound
+    project = tmp_path / "BuggySensorViz.uproject"
+    project.write_text("{}", encoding="utf-8")
+    with patch("spatial_lab_launcher.unreal_editor_path", return_value=None):
+        try:
+            launch(project, platform="win32", popen=Mock())
+            assert False, "expected explicit missing editor"
+        except UnrealEditorNotFound as exc:
+            assert "Select UnrealEditor.exe" in str(exc)
+
+def test_studio_can_link_editor_from_file_picker_and_stores_it():
+    from app import BuggyApp
+    with TemporaryDirectory() as tmp:
+        editor = Path(tmp) / "UnrealEditor.exe"
+        editor.write_bytes(b"test")
+        instance = BuggyApp.__new__(BuggyApp)
+        instance.emergency_stop = Mock()
+        instance.log = Mock()
+        with patch("app.unreal_editor_path", return_value=None), \\
+             patch("app.filedialog.askopenfilename", return_value=str(editor)), \\
+             patch("app.save_editor", return_value=editor.resolve()) as saver, \\
+             patch("app.messagebox.showinfo") as info:
+            assert instance.select_unreal_editor() == editor.resolve()
+            instance.emergency_stop.assert_called_once_with(quiet=True)
+            saver.assert_called_once_with(str(editor))
+            info.assert_called_once()
+
+def test_studio_missing_editor_prompts_and_opens_with_selected_one():
+    from app import BuggyApp
+    from spatial_lab_launcher import UnrealEditorNotFound
+    with TemporaryDirectory() as tmp:
+        project = Path(tmp) / "BuggySensorViz.uproject"
+        editor = Path(tmp) / "UnrealEditor.exe"
+        project.write_text("{}", encoding="utf-8")
+        editor.write_bytes(b"test")
+        instance = BuggyApp.__new__(BuggyApp)
+        instance.online = False
+        instance.demo = False
+        instance.emergency_stop = Mock()
+        instance.log = Mock()
+        instance.select_unreal_editor = Mock(return_value=editor)
+        instance.flight = SimpleNamespace(record=Mock())
+        spawn = Mock(side_effect=[UnrealEditorNotFound("missing"), SimpleNamespace(pid=18)])
+        with patch("app.discover_target", return_value=project), \\
+             patch("app.launch_spatial_lab", spawn), \\
+             patch("app.messagebox.askyesno", return_value=True):
+            assert instance.open_spatial_lab() is True
+            assert spawn.call_count == 2
+            assert spawn.call_args_list[0].args == (project,)
+            assert spawn.call_args_list[1].args == (project,)
+            assert spawn.call_args_list[1].kwargs == {"editor": editor}
+            instance.emergency_stop.assert_called_once_with(quiet=True)
