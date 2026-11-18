@@ -19,6 +19,7 @@ from premium_visuals import render_drive, render_link_health, command_label
 from operator_preferences import load_preferences, save_preferences, DEFAULTS
 from power_path_window import PowerPathWindow
 from preflight_window import PreflightWindow
+from operator_guide_window import GuideWindow
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
@@ -89,6 +90,7 @@ class BuggyApp:
         self.wheel_doctor_window = None
         self.power_path_window = None
         self.preflight_window = None
+        self.guide_window = None
         self.wheel_probe_active = False
         self.firmware_version = 0
         self.diag_phase = 'idle'
@@ -264,6 +266,8 @@ class BuggyApp:
                      color='#305b70', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'QUICK PREFLIGHT', self.open_preflight,
                      color='#344e73', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'HELP / PIN MAP', self.open_guide,
+                     color='#305074', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'FULL DIAGNOSIS', self.open_diagnostics,
                      color='#344e73', width=19).pack(fill='x', padx=9, pady=4)
         self._button(rail, 'BRAKE / ESC', self.emergency_stop,
@@ -345,6 +349,7 @@ class BuggyApp:
             ('QUICK PREFLIGHT', self.open_preflight, '#2d756a'),
             ('OFFLINE CONTROL CHECK', self.run_offline_check, '#344d76'),
             ('LINK STRESS SIMULATOR', self.run_link_stress_check, '#344d76'),
+            ('OPERATOR GUIDE', self.open_guide, '#344d76'),
         )):
             self._button(sys_actions, title, command, color=color, width=20).grid(
                  row=index//2, column=index%2, sticky='ew', padx=5, pady=5)
@@ -666,6 +671,14 @@ class BuggyApp:
         else:
             self.diagnostic_window.top.lift()
             self.diagnostic_window.top.focus_force()
+
+    def open_guide(self):
+        # Reading safety instructions must never leave an active drive behind.
+        self.emergency_stop(quiet=True)
+        if self.guide_window is None:
+            self.guide_window = GuideWindow(self)
+        else:
+            self.guide_window.top.lift()
 
     def open_preflight(self):
         # Preflight is non-driving. A real BLE link must be disconnected first.
