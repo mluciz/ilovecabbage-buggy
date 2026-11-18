@@ -1,3 +1,9 @@
+# Installed desktop app integration (v1.8.1 candidate)
+
+The downloadable **Windows installer** now puts the Unreal project sidecar under `%LOCALAPPDATA%\Programs\CabbageControlStudio\unreal-visualizer\`. Its Control Studio shortcut opens a console-free native EXE. Click **SPATIAL LAB / 3D** or press **F2** to launch the UE 5.4 project without using a terminal. You must have Unreal Engine 5.4 and Visual Studio C++ tools installed to build this C++ source project; no compiled Unreal game is included. The portable artifact has the EXE and Unreal project side-by-side. The installed controller will not open Unreal while connected to the real buggy's BLE link. See [INSTALL_WINDOWS.md](INSTALL_WINDOWS.md) for setup steps.
+
+---
+
 # CABBAGE Control Studio v1.8 → Unreal Spatial Lab
 
 ## What was integrated

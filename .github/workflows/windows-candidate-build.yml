@@ -1,9 +1,10 @@
-name: Windows candidate packaging
+name: Windows installer + Unreal Spatial Lab candidate
 
 on:
   pull_request:
     paths:
       - 'controller/**'
+      - 'unreal-visualizer/**'
       - '.github/workflows/windows-candidate-build.yml'
   workflow_dispatch:
 
@@ -11,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  windows-bundle:
+  windows-desktop-spatial-lab:
     runs-on: windows-latest
     defaults:
       run:
@@ -22,26 +23,63 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install test and packaging dependencies
+      - name: Install UI, launcher, tests and packaging dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pytest "pyinstaller>=6,<8"
-      - name: Python syntax and non-GUI validation
+          python -m pip install -r requirements.txt pytest "pyinstaller>=6,<8" "Pillow>=10,<13"
+      - name: Controller, installer and Spatial Lab launcher offline safety regression
         run: |
           python -m compileall -q .
-          python -m pytest -q tests/test_wheel_doctor_v17.py tests/test_wheel_safety_v165.py tests/test_v18_studio.py tests/test_spatial_lab_launcher.py -k "not TestStudioTk"
-      - name: Bundle test-only desktop application
+          python -m pytest -q tests/test_wheel_doctor_v17.py tests/test_wheel_safety_v165.py tests/test_v18_studio.py tests/test_desktop_installer.py tests/test_spatial_lab_launcher.py -k "not TestStudioTk"
+      - name: Spatial Lab sensor and recorded-session Python regression
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name "Cabbage-Studio-v18-CANDIDATE" --paths "." --add-data "arduino;arduino" --add-data "app.py;." --add-data "ble_bridge.py;." --add-data "WHEEL_DOCTOR_FIELD_GUIDE.md;." --hidden-import "bleak.backends.winrt" app.py
-          if (!(Test-Path "dist/Cabbage-Studio-v18-CANDIDATE.exe")) { throw "Missing bundled EXE" }
-      - name: Include Unreal Spatial Lab companion source alongside the EXE
+          python -m unittest discover -s ../unreal-visualizer/tests -v
+      - name: Generate multi-resolution native Windows application icon
         run: |
-          Copy-Item -Path "../unreal-visualizer" -Destination "dist/unreal-visualizer" -Recurse -Force
-          if (!(Test-Path "dist/unreal-visualizer/BuggySensorViz.uproject")) { throw "Unreal project sidecar is missing" }
-          if (!(Test-Path "dist/unreal-visualizer/build_and_open_unreal.bat")) { throw "Unreal build launcher is missing" }
+          python build_icon.py
+          if (!(Test-Path "branding/CabbageStudio.ico")) { throw "Missing branded Windows icon" }
+      - name: Bundle console-free Control Studio GUI (Python runtime included)
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --icon "branding/CabbageStudio.ico" --name "CabbageControlStudio" --paths "." --add-data "arduino;arduino" --add-data "WHEEL_DOCTOR_FIELD_GUIDE.md;." --add-data "V18_DESIGN_AUDIT.md;." --add-data "README.md;." --add-data "SPATIAL_LAB_INTEGRATION.md;." --hidden-import "bleak.backends.winrt" desktop_entry.py
+          if (!(Test-Path "dist/CabbageControlStudio.exe")) { throw "Windows GUI executable is missing" }
+      - name: Stage portable EXE + Unreal Spatial Lab sidecar
+        run: |
+          New-Item -Path "dist/portable" -ItemType Directory -Force | Out-Null
+          Copy-Item -Path "dist/CabbageControlStudio.exe" -Destination "dist/portable/CabbageControlStudio.exe" -Force
+          Copy-Item -Path "../unreal-visualizer" -Destination "dist/portable/unreal-visualizer" -Recurse -Force
+          if (!(Test-Path "dist/portable/unreal-visualizer/BuggySensorViz.uproject")) { throw "Unreal source sidecar is missing" }
+          if (!(Test-Path "dist/portable/unreal-visualizer/Source/BuggySensorViz/Private/BuggyVizGameMode.cpp")) { throw "Unreal C++ game mode is missing" }
+      - name: Install Inno Setup if needed
+        run: |
+          $candidatePaths = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+          if (-not ($candidatePaths | Where-Object { Test-Path $_ })) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed" }
+          }
+      - name: Build native installer (Start Menu, desktop shortcut, included Unreal project)
+        run: |
+          $candidatePaths = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source }
+          if (-not $iscc) { throw "Inno Setup ISCC.exe not found" }
+          & $iscc /Q "installer/CabbageStudio.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed" }
+          if (!(Test-Path "dist/installer/CabbageControlStudio-v1.8.1-Setup-SpatialLab-CANDIDATE.exe")) { throw "Installer is missing" }
       - uses: actions/upload-artifact@v4
         with:
-          name: Cabbage-Studio-v18-CANDIDATE-Windows
-          path: controller/dist/
+          name: CABBAGE-Studio-v1.8.1-Windows-INSTALLER-SPATIAL-LAB
+          path: controller/dist/installer/CabbageControlStudio-v1.8.1-Setup-SpatialLab-CANDIDATE.exe
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CABBAGE-Studio-v1.8.1-PORTABLE-WITH-SPATIAL-LAB
+          path: controller/dist/portable/
           if-no-files-found: error
           retention-days: 7
