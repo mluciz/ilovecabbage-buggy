@@ -35,6 +35,7 @@ private:
     UPROPERTY() TObjectPtr<UTextBlock> LinkText;
     UPROPERTY() TObjectPtr<UTextBlock> PoseText;
     UPROPERTY() TObjectPtr<UTextBlock> MapText;
+    UPROPERTY() TObjectPtr<UTextBlock> ImuText;
     UPROPERTY() TObjectPtr<UTextBlock> HelpText;
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextFront;
     UPROPERTY() TObjectPtr<UTextBlock> SensorTextLeft;
