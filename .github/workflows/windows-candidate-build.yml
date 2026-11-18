@@ -1,0 +1,42 @@
+name: Windows candidate packaging
+
+on:
+  pull_request:
+    paths:
+      - 'controller/**'
+      - '.github/workflows/windows-candidate-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-bundle:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: controller
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test and packaging dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest "pyinstaller>=6,<8"
+      - name: Python syntax and non-GUI validation
+        run: |
+          python -m compileall -q .
+          python -m pytest -q tests/test_wheel_doctor_v17.py tests/test_wheel_safety_v165.py tests/test_v18_studio.py -k "not TestStudioTk"
+      - name: Bundle test-only desktop application
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name "Cabbage-Studio-v18-CANDIDATE" --paths "." --add-data "arduino;arduino" --add-data "app.py;." --add-data "ble_bridge.py;." --add-data "WHEEL_DOCTOR_FIELD_GUIDE.md;." --hidden-import "bleak.backends.winrt" app.py
+          if (!(Test-Path "dist/Cabbage-Studio-v18-CANDIDATE.exe")) { throw "Missing bundled EXE" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cabbage-Studio-v18-CANDIDATE-Windows
+          path: controller/dist/Cabbage-Studio-v18-CANDIDATE.exe
+          if-no-files-found: error
+          retention-days: 7
