@@ -83,6 +83,46 @@ float ABuggyTelemetryActor::GetDistanceMm(int32 Index) const
 {
     return Index >= 0 && Index < 3 ? Readings[Index].DistanceMm : -1.0f;
 }
+int32 ABuggyTelemetryActor::GetRecentPacketRateHz() const
+{
+    const double Now = FPlatformTime::Seconds();
+    int32 Recent = 0;
+    for (const double T : RecentPacketTimes) if (Now - T <= 2.0) ++Recent;
+    return FMath::RoundToInt(Recent / 2.0f);
+}
+float ABuggyTelemetryActor::GetClosestValidRangeMm() const
+{
+    float Closest = -1.0f;
+    for (const FSensorReading& R : Readings)
+        if (R.bValid && (Closest < 0 || R.DistanceMm < Closest)) Closest = R.DistanceMm;
+    return Closest;
+}
+float ABuggyTelemetryActor::GetMountAngle(int32 Index) const
+{
+    return SensorYaw(FMath::Clamp(Index, 0, 2));
+}
+bool ABuggyTelemetryActor::SetMountAngles(float Front, float Left, float Right)
+{
+    if (!FMath::IsFinite(Front) || !FMath::IsFinite(Left) || !FMath::IsFinite(Right) ||
+        FMath::Abs(Front) > 180 || FMath::Abs(Left) > 180 || FMath::Abs(Right) > 180) return false;
+    FrontMountYawDegrees = Front;
+    LeftMountYawDegrees = Left;
+    RightMountYawDegrees = Right;
+    ClearObservations();
+    return true;
+}
+FString ABuggyTelemetryActor::GetDemoScenarioName() const
+{
+    return DemoScenarioIndex == 0 ? TEXT("ARENA") :
+        (DemoScenarioIndex == 1 ? TEXT("CORRIDOR") : TEXT("OPEN FIELD"));
+}
+void ABuggyTelemetryActor::CycleDemoScenario()
+{
+    DemoScenarioIndex = (DemoScenarioIndex + 1) % 3;
+    DemoTimeSeconds = 0;
+    ClearObservations();
+    ApplyDemoScenario();
+}
 double ABuggyTelemetryActor::GetStreamAgeSeconds() const
 {
     return LastPacketAt < 0.0 ? 999.0 : FMath::Max(0.0, FPlatformTime::Seconds() - LastPacketAt);
@@ -94,6 +134,7 @@ void ABuggyTelemetryActor::SetDemoMode(bool bEnabled)
     bPaused = false;
     bExternalPose = false;
     LastPacketAt = -1.0;
+    RecentPacketTimes.Reset();
     DemoTimeSeconds = 0;
     SetActorLocation(FVector::ZeroVector);
     EstimatedYawDegrees = 0;
@@ -125,7 +166,7 @@ bool ABuggyTelemetryActor::ExportObservationsCsv()
     static const TCHAR* Names[3] = {TEXT("front"),TEXT("left"),TEXT("right")};
     for (const FObservedPoint& P : Observations)
     {
-        const TCHAR* Quality = bDemoMode ? TEXT("synthetic") : (bExternalPose ? TEXT("unverified_external_pose") : TEXT("no_xy_pose"));
+        const TCHAR* Quality = P.bSynthetic ? TEXT("synthetic") : (P.bHasPose ? TEXT("unverified_external_pose") : TEXT("no_xy_pose"));
         Csv += FString::Printf(TEXT("%s,%.4f,%.4f,%.4f,%.3f,%s\n"),
             Names[FMath::Clamp(P.SensorIndex,0,2)], P.Position.X/100.f, P.Position.Y/100.f,
             P.Position.Z/100.f, Now-P.TimeSeconds, Quality);
@@ -286,6 +327,8 @@ void ABuggyTelemetryActor::ApplyPacket(const FString& Payload)
         if (Next[i].bValid) RecordObservation(i, Next[i].DistanceMm, Now);
     }
     LastPacketAt = Now;
+    RecentPacketTimes.Add(Now);
+    RecentPacketTimes.RemoveAll([Now](double T) { return Now - T > 2.0; });
     ++AcceptedPacketCount;
 }
 FVector ABuggyTelemetryActor::SensorOrigin(int32 Index) const
@@ -312,6 +355,8 @@ void ABuggyTelemetryActor::RecordObservation(int32 Index, float Mm, double Now)
     Point.Position = SensorOrigin(Index) + SensorDirection(Index) * (Mm / 10.0f);
     Point.SensorIndex = Index;
     Point.TimeSeconds = Now;
+    Point.bSynthetic = bDemoMode;
+    Point.bHasPose = bExternalPose;
     Observations.Add(Point);
 }
 bool ABuggyTelemetryActor::RayBoxHit2D(const FVector& Start, const FVector& Dir, const FDemoObstacle& Box, float& HitCm) const
@@ -410,6 +455,39 @@ void ABuggyTelemetryActor::BuildDemoScene()
             Obstacle.Visual = Shape;
         }
         DemoBoxes.Add(Obstacle);
+    }
+    ApplyDemoScenario();
+}
+void ABuggyTelemetryActor::ApplyDemoScenario()
+{
+    const FVector Arena[] = {
+        FVector(180,0,50), FVector(100,150,40), FVector(105,-145,55),
+        FVector(-150,60,60), FVector(-145,-160,30)
+    };
+    const FVector ArenaHalf[] = {
+        FVector(30,42,50), FVector(30,35,40), FVector(33,35,55),
+        FVector(45,30,60), FVector(24,54,30)
+    };
+    const FVector Corridor[] = {
+        FVector(175,85,45), FVector(175,-85,45), FVector(40,125,50),
+        FVector(40,-125,50), FVector(-175,0,40)
+    };
+    const FVector CorridorHalf[] = {
+        FVector(125,15,45), FVector(125,15,45), FVector(25,60,50),
+        FVector(25,60,50), FVector(25,40,40)
+    };
+    for (int32 i=0; i<DemoBoxes.Num() && i<5; ++i)
+    {
+        FDemoObstacle& B = DemoBoxes[i];
+        B.Center = DemoScenarioIndex == 0 ? Arena[i] :
+            (DemoScenarioIndex == 1 ? Corridor[i] : FVector(3000+i*200,0,40));
+        B.HalfSize = DemoScenarioIndex == 0 ? ArenaHalf[i] :
+            (DemoScenarioIndex == 1 ? CorridorHalf[i] : FVector(30,30,40));
+        if (B.Visual.IsValid())
+        {
+            B.Visual->SetActorLocation(B.Center);
+            B.Visual->SetActorScale3D(B.HalfSize*0.02f);
+        }
     }
     SetDemoGeometryVisibility();
 }
