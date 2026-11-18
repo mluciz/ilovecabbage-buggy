@@ -13,6 +13,7 @@ import sys
 
 STEPS = (
     ('runtime', 'Python / BLE dependency'),
+    ('pin_source', 'Firmware + GUI pin/protocol source audit'),
     ('usb', 'USB Arduino COM ports (optional)'),
     ('scan', 'BLE scanner / adapter'),
     ('device', 'HM-10 device discovery'),
@@ -49,7 +50,7 @@ class DiagnosticReport:
         self.context = context
         self.is_running = True
         self.checks = {key: Check(name) for key, name in STEPS}
-        self.set('hardware', 'MANUAL', 'No motor current / wheel sensors; user must check hardware')
+        self.set('hardware', 'MANUAL', 'No motor current / wheel sensors; user must verify all wiring, driver supply and actual physical braking')
         self.add('Diagnostic run started (motors held in active brake).')
 
     def set(self, key: str, status: str, detail: str):
@@ -68,6 +69,8 @@ class DiagnosticReport:
         c = self.checks
         if c['runtime'].status == 'FAIL':
             return 'Install the required Python packages using run.bat. Check the Python interpreter / Python Tk installation.'
+        if c['pin_source'].status == 'FAIL':
+            return 'Source pin/protocol mismatch: do not flash or test motors. Open WHEEL DOCTOR -> SOURCE PIN AUDIT and repair the recorded inconsistency first.'
         if c['scan'].status == 'FAIL':
             return 'Windows Settings → Bluetooth & devices: switch Bluetooth on. Check Device Manager for a BLE-capable adapter, update its driver, then restart the app.'
         if c['device'].status in ('FAIL', 'WARN') and c['scan'].status == 'PASS':
@@ -81,9 +84,9 @@ class DiagnosticReport:
         if c['write'].status == 'FAIL':
             return 'BLE writes failed. The device may have disconnected or its writable characteristic changed. Reconnect and repeat the diagnostic scan.'
         if c['firmware'].status == 'FAIL':
-            return 'BLE is connected, but no protocol Q→H,13 handshake arrived. Upload the supplied v1.6.3 Arduino sketch, check HM-10 TXD→Uno D2 and Uno D3→HM-10 RXD through the level shifter, common GND and UART baud (9600).'
+            return 'BLE is connected, but no protocol Q→H,13 handshake arrived. Upload the supplied v1.6.5-safety Arduino sketch, check HM-10 TXD→Uno D2 and Uno D3→HM-10 RXD through the level shifter, common GND and UART baud (9600).'
         if c['firmware'].status == 'WARN':
-            return 'Feedback exists but no Q→H,13 handshake was verified. Older firmware or dropped notifications may be responsible. Re-upload the v1.6.3 firmware and retry.'
+            return 'Feedback exists but no Q→H,13 handshake was verified. Older firmware or dropped notifications may be responsible. Re-upload the v1.6.5-safety firmware and retry.'
         if c['telemetry'].status == 'FAIL':
             return 'No readable Arduino telemetry received. Verify notifications are enabled, v1.6.3 firmware is uploaded, HM-10 TX/RX wiring is crossed correctly and both sides use 9600 baud.'
         if c['telemetry'].status == 'WARN':
@@ -96,7 +99,7 @@ class DiagnosticReport:
 
     def export_text(self):
         output = [
-            'BUGGY CONTROL CENTER v1.6.3 — DIAGNOSTIC REPORT',
+            'BUGGY CONTROL CENTER v1.7 candidate — DIAGNOSTIC REPORT',
             f'Generated: {datetime.now().astimezone().isoformat(timespec="seconds")}',
             f'Run started: {self.started_at or "not run"}',
             f'Environment: {platform.system()} {platform.release()} / Python {sys.version.split()[0]}',
