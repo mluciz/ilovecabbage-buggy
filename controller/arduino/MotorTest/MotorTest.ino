@@ -2,7 +2,8 @@
   Buggy Motor Test v1.6.5 — standalone Arduino Uno sketch.
   SAFETY: wheels lifted, motor battery disconnected during upload, and
   physical battery cut-off reachable. Tests are NOT run on power-up.
-  Serial Monitor: 9600 baud; send T to start, X or S to abort immediately.
+  Serial Monitor: 9600 baud; send 1..6 for ONE channel/direction only,
+  T for complete 6-step sequence, X or S to abort immediately.
   Drives each channel at low PWM, independently in both directions.
   This is an OPEN-LOOP test: it does not confirm actual wheel speed.
 */
@@ -10,6 +11,7 @@ const byte STBY=4, PWMA=5, PWMB=6, AIN1=7, AIN2=8, BIN1=9, BIN2=10;
 const int TEST_PWM=160;
 const unsigned long RUN_MS=650, GAP_MS=600;
 bool running=false;
+bool singleStep=false;
 bool inGap=false;
 byte step=0;
 unsigned long phaseAt=0;
@@ -54,7 +56,8 @@ void setup() {
   brake();
   Serial.begin(9600);
   digitalWrite(STBY,HIGH);
-  Serial.println(F("WHEELS UP + MOTOR SWITCH READY? Send T, X/S abort."));
+  Serial.println(F("WHEELS UP. Send 1 LEFT FWD, 2 LEFT REV, 3 RIGHT FWD,"));
+  Serial.println(F("4 RIGHT REV, 5 BOTH FWD, 6 BOTH REV; T=all, X/S=abort."));
 }
 void loop() {
   // Always poll abort commands, even while a test is underway.
@@ -62,13 +65,22 @@ void loop() {
     char c=(char)Serial.read();
     if(c=='X'||c=='x'||c=='S'||c=='s') { abortTest(); }
     else if((c == 'T'||c == 't')&&!running) {
-      step=0; running=true; inGap=false;
+      singleStep=false; step=0; running=true; inGap=false;
+      startStep(step);
+    } else if(c>='1' && c<='6' && !running) {
+      // One commanded wheel only, then a permanent brake until next key.
+      singleStep=true; step=(byte)(c-'1'); running=true; inGap=false;
       startStep(step);
     }
   }
   if(!running) return;
   if(!inGap && millis()-phaseAt>=RUN_MS) {
     brake(); inGap=true; phaseAt=millis();
+    if (singleStep) {
+      running=false; inGap=false;
+      Serial.println(F("ONE STEP COMPLETE / BRAKED. Send next number."));
+      return;
+    }
   } else if(inGap && millis()-phaseAt>=GAP_MS) {
     ++step;
     if(step>=6) {
