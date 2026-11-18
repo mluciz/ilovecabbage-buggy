@@ -51,7 +51,10 @@ def demo_packet(t: float, scenario: str = "arena") -> dict:
         sensor_rows.append(row)
     return {"schema": 2, "source": "synthetic-demo", "sensors": sensor_rows,
             "pose": {"x_m": x / 100., "y_m": y / 100., "yaw_deg": yaw},
-            "imu": {"gyro_z_dps": 3.64 * math.cos(t*.28), "dt_s": .05}}
+            "imu": {"gyro_x_dps": 0, "gyro_y_dps": 0,
+                    "gyro_z_dps": 3.64 * math.cos(t*.28),
+                    "accel_x_g": 0, "accel_y_g": 0, "accel_z_g": 1,
+                    "dt_s": .05}}
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
