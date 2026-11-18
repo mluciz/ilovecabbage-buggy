@@ -29,6 +29,14 @@ namespace VizStyle
 void UBuggyVizDashboard::SetVisualizer(ABuggyTelemetryActor* NewVisualizer)
 {
     Visualizer = NewVisualizer;
+    if (Visualizer)
+    {
+        for (int32 i=0;i<3;++i)
+            if (MountInputs.IsValidIndex(i) && MountInputs[i])
+                MountInputs[i]->SetText(FText::AsNumber(Visualizer->GetMountAngle(i)));
+        if (CalibrationText)
+            CalibrationText->SetText(FText::FromString(Visualizer->GetCalibrationStatus()));
+    }
     Refresh();
 }
 void UBuggyVizDashboard::NativeConstruct()
@@ -270,7 +278,7 @@ void UBuggyVizDashboard::OnApplyMountAngles()
         }
     }
     if (Visualizer->SetMountAngles(Values[0],Values[1],Values[2]))
-        CalibrationText->SetText(FText::FromString(TEXT("Mounted bearings applied; old points cleared. Verify physical orientation.")));
+        CalibrationText->SetText(FText::FromString(Visualizer->GetCalibrationStatus()));
     else
         CalibrationText->SetText(FText::FromString(TEXT("Angle calibration failed")));
 }
