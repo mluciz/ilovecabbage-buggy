@@ -15,30 +15,35 @@ from diagnostics import DiagnosticReport, interpret_error, usb_port_diagnosis
 from diagnostic_window import DiagnosticWindow
 from wheel_doctor_window import WheelDoctorWindow
 from wheel_doctor import audit_sources
+from premium_visuals import render_drive, render_link_health, command_label
+from operator_preferences import load_preferences, save_preferences, DEFAULTS
+from power_path_window import PowerPathWindow
+from preflight_window import PreflightWindow
+from operator_guide_window import GuideWindow
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
 from link_stress_lab import offline_link_stress_check
 
-BG = '#0b1020'
-CARD = '#141d30'
-CARD_DARK = '#10182a'
-BORDER = '#2c3850'
-TEXT = '#f1f5ff'
-MUTED = '#99abc7'
-CYAN = '#55d9e9'
-GREEN = '#4ddd9c'
-AMBER = '#f5c26b'
-RED = '#ff667e'
-BLUE = '#447bd0'
+BG = '#08111e'
+CARD = '#132238'
+CARD_DARK = '#0c192b'
+BORDER = '#2b425b'
+TEXT = '#e9f5ff'
+MUTED = '#9ab4cd'
+CYAN = '#57e7cc'
+GREEN = '#60ebbd'
+AMBER = '#f2c17a'
+RED = '#ff7487'
+BLUE = '#567ee5'
 
 
 class BuggyApp:
     def __init__(self, root):
         self.root = root
-        root.title('Buggy Control Center / Field Lab v1.7 CANDIDATE — bench-test only')
-        root.geometry('1280x900')
-        root.minsize(1000, 700)
+        root.title('CABBAGE / Buggy Control Studio v1.8 — candidate')
+        root.geometry('1380x900')
+        root.minsize(1020, 690)
         root.configure(bg=BG)
 
         self._closed = False
@@ -63,7 +68,8 @@ class BuggyApp:
         self._release_debounce_ms = 65
         self._feedback_warning_at = 0.0
         self._last_stream_warning_at = 0.0
-        self.gear = 2
+        self.preferences = load_preferences()
+        self.gear = self.preferences['gear']
         self.route = []
         self.running = False
         self.route_index = 0
@@ -82,6 +88,9 @@ class BuggyApp:
         self.diagnosis = DiagnosticReport()
         self.diagnostic_window = None
         self.wheel_doctor_window = None
+        self.power_path_window = None
+        self.preflight_window = None
+        self.guide_window = None
         self.wheel_probe_active = False
         self.firmware_version = 0
         self.diag_phase = 'idle'
@@ -93,7 +102,7 @@ class BuggyApp:
         self.link_notify_state = None
 
         self.device_var = tk.StringVar()
-        self.uuid_var = tk.StringVar(value='FFE1')
+        self.uuid_var = tk.StringVar(value=self.preferences['gatt_uuid'])
         self.demo_var = tk.BooleanVar(value=False)
         self.shape_var = tk.StringVar(value='Circle')
         self.turn_var = tk.StringVar(value='L')
@@ -102,8 +111,8 @@ class BuggyApp:
         self.legs_var = tk.StringVar(value='5')
         self.angle_var = tk.StringVar(value='45')
         self.laps_var = tk.StringVar(value='1')
-        self.speed_var = tk.StringVar(value='22')
-        self.width_var = tk.StringVar(value='13')
+        self.speed_var = tk.StringVar(value=self.preferences['measured_speed_cm_s'])
+        self.width_var = tk.StringVar(value=self.preferences['wheel_spacing_cm'])
         self.status_var = tk.StringVar(value='DISCONNECTED')
         self.command_var = tk.StringVar(value='L 0   |   R 0')
         self.stats_var = tk.StringVar(value='Create a route to see its estimated duration.')
@@ -111,10 +120,11 @@ class BuggyApp:
         self.keys_var = tk.StringVar(value='HELD KEYS: none')
         self.last_input_var = tk.StringVar(value='INPUT: waiting for keyboard — click ACTIVATE WASD')
         self.gear_info_var = tk.StringVar(value=f'GEAR {self.gear} / PWM {GEARS[self.gear]}')
-        self.steering_var = tk.IntVar(value=50)
-        self.precision_var = tk.BooleanVar(value=False)
-        self.balance_var = tk.IntVar(value=0)  # 0=matched outputs, + favors right
+        self.steering_var = tk.IntVar(value=self.preferences['steering'])
+        self.precision_var = tk.BooleanVar(value=self.preferences['precision'])
+        self.balance_var = tk.IntVar(value=self.preferences['balance'])  # 0=matched outputs, + favors right
         self.balance_info_var = tk.StringVar(value="MOTOR BALANCE 0% (equal)")
+        self.preference_status_var = tk.StringVar(value='TUNING  /  Saved only when you click SAVE SETTINGS')
         self.link_health_var = tk.StringVar(value="COMMAND LINK: disconnected")
         self.quick_health_var = tk.StringVar(value="OFFLINE  /  Motors locked  /  Pin map available")
         self.steering_info_var = tk.StringVar(value='STEERING 50%')
@@ -128,6 +138,9 @@ class BuggyApp:
 
         self._make_style()
         self._build_ui()
+        self._balance_changed()
+        self._steering_changed()
+        self.gear_info_var.set(self._gear_caption())
         # Tk Scale does not consistently call command when IntVar is changed by code.
         self.steering_var.trace_add('write', lambda *_: self._steering_changed())
         self.balance_var.trace_add('write', lambda *_: self._balance_changed())
@@ -173,49 +186,112 @@ class BuggyApp:
         return entry
 
     def _build_ui(self):
+        # First-party Tk canvas design; no heavyweight UI framework or network assets.
         header = tk.Frame(self.root, bg=BG)
-        header.pack(fill='x', padx=20, pady=(15, 8))
-        tk.Label(header, text='BUGGY', fg=CYAN, bg=BG,
-                 font=('Segoe UI', 26, 'bold')).pack(side='left')
-        tk.Label(header, text=' / FIELD CONSOLE', fg=TEXT, bg=BG,
-                 font=('Segoe UI', 17, 'bold')).pack(side='left', pady=(6, 0))
-        tk.Label(header, textvariable=self.status_var, fg=AMBER, bg=BG,
-                 font=('Segoe UI', 11, 'bold')).pack(side='right', pady=(8, 0))
+        header.pack(fill='x', padx=22, pady=(14, 10))
+        tk.Label(header, text='C /', fg=CYAN, bg=BG,
+                 font=('Segoe UI', 29, 'bold')).pack(side='left')
+        tk.Label(header, text='CABBAGE', fg=TEXT, bg=BG,
+                 font=('Segoe UI', 24, 'bold')).pack(side='left', padx=(7, 7))
+        tk.Label(header, text='CONTROL STUDIO    1.8  /  CANDIDATE',
+                 fg=MUTED, bg=BG, font=('Segoe UI', 10, 'bold')).pack(
+                     side='left', pady=(16, 0))
+        self.connection_badge = tk.Label(header, textvariable=self.status_var,
+                 fg=AMBER, bg=CARD, padx=16, pady=9,
+                 font=('Segoe UI', 10, 'bold'))
+        self.connection_badge.pack(side='right', pady=(4, 0))
 
         bar = self._panel(self.root)
-        bar.pack(fill='x', padx=20, pady=(0, 12))
+        bar.pack(fill='x', padx=22, pady=(0, 9))
         row = tk.Frame(bar, bg=CARD)
-        row.pack(fill='x', padx=12, pady=11)
-        self._button(row, 'SCAN BLE', self.scan, color='#305c91', width=10).pack(side='left', padx=(0, 10))
+        row.pack(fill='x', padx=14, pady=11)
+        self._label(row, 'CONNECT', color=CYAN, bold=True, size=9).pack(side='left', padx=(0, 10))
+        self._button(row, 'FIND DEVICES', self.scan, color='#284b66', width=14).pack(
+            side='left', padx=(0, 10))
         self.device_combo = ttk.Combobox(row, textvariable=self.device_var,
-                                          style='Dark.TCombobox', state='readonly', width=31)
+                        style='Dark.TCombobox', state='readonly', width=27)
         self.device_combo.pack(side='left', padx=(0, 12))
-        self._label(row, 'GATT UUID', color=MUTED).pack(side='left', padx=(0, 6))
-        self._entry(row, self.uuid_var, 8).pack(side='left', padx=(0, 12))
-        tk.Checkbutton(row, text='Demo mode', variable=self.demo_var, bg=CARD, fg=MUTED,
-                       selectcolor=CARD_DARK, activebackground=CARD, activeforeground=TEXT,
-                       font=('Segoe UI', 10)).pack(side='left', padx=(0, 12))
+        self._label(row, 'UART', color=MUTED, size=9).pack(side='left', padx=(0, 7))
+        self._entry(row, self.uuid_var, 7).pack(side='left', padx=(0, 9))
+        tk.Checkbutton(row, text='SIMULATOR', variable=self.demo_var, bg=CARD,
+                       fg=MUTED, selectcolor=CARD_DARK, activebackground=CARD,
+                       activeforeground=TEXT, font=('Segoe UI', 9, 'bold')).pack(
+                           side='left', padx=(0, 12))
         self.connect_btn = self._button(row, 'CONNECT', self.toggle_connection,
-                                         color='#197f83', width=12)
+                                      color='#157d75', width=12)
         self.connect_btn.pack(side='left')
-        self._button(row, 'DIAGNOSTICS', self.open_diagnostics, color='#6b528f',
-                     width=13).pack(side='left', padx=(10, 0))
+        self._button(row, 'EMERGENCY STOP', self.emergency_stop,
+                     color='#b53c56', width=17).pack(side='right', padx=(8, 0))
 
-        health = tk.Frame(self.root, bg=CARD_DARK, highlightbackground=BORDER, highlightthickness=1)
-        health.pack(fill='x', padx=20, pady=(0, 12))
-        tk.Label(health, text='LIVE SAFETY / CONNECTION', bg=CARD_DARK, fg=CYAN,
-                 font=('Segoe UI', 9, 'bold')).pack(side='left', padx=(12, 12), pady=8)
+        health = tk.Frame(self.root, bg=CARD_DARK,
+                          highlightbackground=BORDER, highlightthickness=1)
+        health.pack(fill='x', padx=22, pady=(0, 11))
+        tk.Label(health, text='SYSTEM STATUS', bg=CARD_DARK, fg=CYAN,
+                 font=('Segoe UI', 9, 'bold')).pack(side='left', padx=(14, 14), pady=8)
         tk.Label(health, textvariable=self.quick_health_var, bg=CARD_DARK, fg=TEXT,
-                 font=('Segoe UI', 10), anchor='w').pack(side='left', fill='x', expand=True)
-        self._button(health, 'PIN + WHEEL HELP [F1]', self.open_wheel_doctor,
-                     color='#28546a', width=21).pack(side='right', padx=8, pady=5)
+                 font=('Segoe UI', 9), anchor='w').pack(side='left', fill='x', expand=True)
+        self._button(health, 'WHEEL DOCTOR   F1', self.open_wheel_doctor,
+                     color='#284d61', width=20).pack(side='right', padx=8, pady=5)
 
         work = tk.Frame(self.root, bg=BG)
-        work.pack(fill='both', expand=True, padx=20)
-        left_outer = tk.Frame(work, bg=BG, width=405)
-        left_outer.pack(side='left', fill='y', padx=(0, 12))
+        work.pack(fill='both', expand=True, padx=22)
+        rail = tk.Frame(work, bg='#0b1929', width=192,
+                        highlightbackground=BORDER, highlightthickness=1)
+        rail.pack(side='left', fill='y', padx=(0, 13))
+        rail.pack_propagate(False)
+        tk.Label(rail, text='WORKSPACES', bg='#0b1929', fg=MUTED,
+                 font=('Segoe UI', 9, 'bold')).pack(anchor='w', padx=17, pady=(18, 14))
+        self.nav_buttons = {}
+        for name, title, caption in (
+                ('drive', '01   DRIVE', 'Manual cockpit'),
+                ('routes', '02   ROUTES', 'Route design'),
+                ('system', '03   SYSTEM', 'Diagnostics & power')):
+            holder = tk.Frame(rail, bg='#0b1929')
+            holder.pack(fill='x', padx=8, pady=3)
+            btn = tk.Button(holder, text=title, command=lambda n=name: self._navigate(n),
+                            bg='#11243a', fg=TEXT, activebackground='#1d4859',
+                            activeforeground=TEXT, anchor='w', relief='flat',
+                            padx=11, pady=13, cursor='hand2',
+                            font=('Segoe UI', 11, 'bold'))
+            btn.pack(fill='x')
+            self.nav_buttons[name] = btn
+            tk.Label(holder, text=caption, bg='#0b1929', fg=MUTED,
+                     font=('Segoe UI', 8), anchor='w').pack(fill='x', padx=10, pady=(2, 4))
+        tk.Frame(rail, bg='#0b1929', height=14).pack()
+        tk.Label(rail, text='QUICK ACTIONS', bg='#0b1929', fg=MUTED,
+                 font=('Segoe UI', 9, 'bold')).pack(anchor='w', padx=17, pady=(8, 8))
+        self._button(rail, 'WHEEL DOCTOR', self.open_wheel_doctor,
+                     color='#225d60', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'POWER PATH LAB', self.open_power_path,
+                     color='#305b70', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'QUICK PREFLIGHT', self.open_preflight,
+                     color='#344e73', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'HELP / PIN MAP', self.open_guide,
+                     color='#305074', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'FULL DIAGNOSIS', self.open_diagnostics,
+                     color='#344e73', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'BRAKE / ESC', self.emergency_stop,
+                     color='#97374e', width=19).pack(fill='x', padx=9, pady=4)
+        tk.Label(rail, text='DRIVE SHORTCUTS\nW A S D  ·  1–4 gears\nESC or Space  ·  STOP',
+                 justify='left', bg='#0b1929', fg=MUTED,
+                 font=('Segoe UI', 9)).pack(side='bottom', anchor='w',
+                                           padx=15, pady=18)
+
+        content = tk.Frame(work, bg=BG)
+        content.pack(side='left', fill='both', expand=True)
+        self.pages = {}
+        for name in ('drive', 'routes', 'system'):
+            page = tk.Frame(content, bg=BG)
+            page.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self.pages[name] = page
+        self._active_page = None
+
+        drive = self.pages['drive']
+        left_outer = tk.Frame(drive, bg=BG, width=430)
+        left_outer.pack(side='left', fill='y', padx=(0, 13))
         left_outer.pack_propagate(False)
-        left_scrollbar = tk.Scrollbar(left_outer, orient='vertical', width=11)
+        left_scrollbar = tk.Scrollbar(left_outer, orient='vertical', width=10,
+                                     bg=CARD, troughcolor=BG, activebackground=CYAN)
         left_scrollbar.pack(side='right', fill='y')
         left_canvas = tk.Canvas(left_outer, bg=BG, highlightthickness=0,
                                 yscrollcommand=left_scrollbar.set)
@@ -224,14 +300,74 @@ class BuggyApp:
         left = tk.Frame(left_canvas, bg=BG)
         left_id = left_canvas.create_window((0, 0), window=left, anchor='nw')
         left.bind('<Configure>', lambda _e: left_canvas.configure(
-                  scrollregion=left_canvas.bbox('all')))
+                    scrollregion=left_canvas.bbox('all')))
         left_canvas.bind('<Configure>', lambda e: left_canvas.itemconfigure(
-                         left_id, width=e.width))
+                    left_id, width=e.width))
         self.left_canvas = left_canvas
         self.left_outer = left_outer
         self.root.bind_all('<MouseWheel>', self._scroll_left)
-        right = tk.Frame(work, bg=BG)
-        right.pack(side='left', fill='both', expand=True)
+        drive_right = tk.Frame(drive, bg=BG)
+        drive_right.pack(side='left', fill='both', expand=True)
+
+        route_page = self.pages['routes']
+        route_outer = tk.Frame(route_page, bg=BG, width=430)
+        route_outer.pack(side='left', fill='y', padx=(0, 13))
+        route_outer.pack_propagate(False)
+        route_scrollbar = tk.Scrollbar(route_outer, orient='vertical', width=10,
+                                      bg=CARD, troughcolor=BG, activebackground=CYAN)
+        route_scrollbar.pack(side='right', fill='y')
+        route_canvas = tk.Canvas(route_outer, bg=BG, highlightthickness=0,
+                                 yscrollcommand=route_scrollbar.set)
+        route_canvas.pack(side='left', fill='both', expand=True)
+        route_scrollbar.config(command=route_canvas.yview)
+        routes_left = tk.Frame(route_canvas, bg=BG)
+        route_left_id = route_canvas.create_window((0, 0), window=routes_left, anchor='nw')
+        routes_left.bind('<Configure>', lambda _e: route_canvas.configure(
+                         scrollregion=route_canvas.bbox('all')))
+        route_canvas.bind('<Configure>', lambda e: route_canvas.itemconfigure(
+                         route_left_id, width=e.width))
+        self.route_left_outer = route_outer
+        self.route_left_canvas = route_canvas
+        routes_right = tk.Frame(route_page, bg=BG)
+        routes_right.pack(side='left', fill='both', expand=True)
+
+        system = self.pages['system']
+        sys_header = self._panel(system, '03   SYSTEM LAB  /  HARDWARE + COMMUNICATION')
+        sys_header.pack(fill='x', pady=(0, 12))
+        tk.Label(sys_header, text='Troubleshoot one layer at a time. Software passes never prove wheel rotation.',
+                 bg=CARD, fg=MUTED, anchor='w', font=('Segoe UI', 11)).pack(
+                     fill='x', padx=17, pady=(0, 12))
+        sys_actions = tk.Frame(sys_header, bg=CARD)
+        sys_actions.pack(fill='x', padx=17, pady=(0, 15))
+        # Compact 2-column grid: buttons never overflow at 1020px window width.
+        for column in (0, 1):
+            sys_actions.grid_columnconfigure(column, weight=1, uniform='actions')
+        for index, (title, command, color) in enumerate((
+            ('RUN FULL DIAGNOSIS', self.open_diagnostics, '#286283'),
+            ('WHEEL DOCTOR  /  F1', self.open_wheel_doctor, '#167e78'),
+            ('POWER PATH LAB', self.open_power_path, '#345f77'),
+            ('QUICK PREFLIGHT', self.open_preflight, '#2d756a'),
+            ('OFFLINE CONTROL CHECK', self.run_offline_check, '#344d76'),
+            ('LINK STRESS SIMULATOR', self.run_link_stress_check, '#344d76'),
+            ('OPERATOR GUIDE', self.open_guide, '#344d76'),
+        )):
+            self._button(sys_actions, title, command, color=color, width=20).grid(
+                 row=index//2, column=index%2, sticky='ew', padx=5, pady=5)
+        sys_card = self._panel(system, 'THREE-LAYER CONNECTION HEALTH')
+        sys_card.pack(fill='x', pady=(0, 12))
+        self.link_visual = tk.Canvas(sys_card, height=81, bg=CARD_DARK, highlightthickness=0)
+        self.link_visual.pack(fill='x', padx=16, pady=(0, 15))
+        self.link_visual.bind('<Configure>', lambda _e: self._redraw_link_visual())
+        notes = self._panel(system, 'CHECK MOTOR POWER BEFORE REWIRING')
+        notes.pack(fill='x')
+        self._label(notes, '1  Uno USB light on does NOT prove that the motor supply VM is powered.',
+                    color=TEXT, size=10).pack(anchor='w', padx=17, pady=(0, 8))
+        self._label(notes, '2  HM-10 can disappear on battery power if its own VCC rail drops or wiring differs.',
+                    color=TEXT, size=10).pack(anchor='w', padx=17, pady=(0, 8))
+        self._label(notes, '3  Check STBY, battery ground, VM, 3.3V breakout rating and D2/D3 crossed UART.',
+                    color=TEXT, size=10).pack(anchor='w', padx=17, pady=(0, 8))
+        self._label(notes, 'Source pin audit is available under WHEEL DOCTOR; actual voltages require a meter.',
+                    color=AMBER, size=9).pack(anchor='w', padx=17, pady=(0, 16))
 
         manual = self._panel(left, '01   DRIVE DECK  /  WASD')
         manual.configure(takefocus=1)
@@ -239,16 +375,39 @@ class BuggyApp:
         manual.pack(fill='x', pady=(0, 10))
         self._label(manual, 'Hold keys to move · diagonals steer · release to stop',
                     size=9, color=MUTED).pack(anchor='w', padx=15)
+
         pads = tk.Frame(manual, bg=CARD)
-        pads.pack(pady=8)
-        keys = [('W', 0, 1), ('A', 1, 0), ('S', 1, 1), ('D', 1, 2)]
-        for key, r, c in keys:
-            btn = tk.Button(pads, text=key, bg='#263851', fg=TEXT, width=6, height=2,
-                            relief='flat', font=('Segoe UI', 12, 'bold'), bd=0)
-            btn.grid(row=r, column=c, padx=3, pady=3)
-            btn.bind('<ButtonPress-1>', lambda _e, k=key: self._press(k, source='mouse'))
-            btn.bind('<ButtonRelease-1>', lambda _e, k=key: self._release(k, source='mouse'))
-            btn.bind('<Leave>', lambda _e, k=key: self._release(k, source='mouse'))
+        pads.pack(pady=(12, 12))
+        tk.Label(pads, text='PRESS + HOLD  /  release to brake',
+                 bg=CARD, fg=MUTED, font=('Segoe UI', 9, 'bold')).grid(
+                     row=0, column=0, columnspan=3, sticky='w', pady=(0, 9))
+        self.drive_pad_buttons = {}
+        directions = [
+            ('W + A', ('W', 'A'), 1, 0), ('W', ('W',), 1, 1),
+            ('W + D', ('W', 'D'), 1, 2),
+            ('A', ('A',), 2, 0), ('BRAKE', (), 2, 1),
+            ('D', ('D',), 2, 2),
+            ('S + A', ('S', 'A'), 3, 0), ('S', ('S',), 3, 1),
+            ('S + D', ('S', 'D'), 3, 2),
+        ]
+        for title, keys, row_index, col_index in directions:
+            btn = tk.Button(pads, text=title,
+                bg='#943c52' if not keys else '#19364e',
+                fg=TEXT, activebackground='#2c7e75', activeforeground=TEXT,
+                width=9, height=2, bd=0, relief='flat',
+                cursor='hand2', font=('Segoe UI', 11, 'bold'))
+            btn.grid(row=row_index, column=col_index, padx=4, pady=4)
+            if keys:
+                btn.bind('<ButtonPress-1>',
+                         lambda _e, combo=keys: self._press_combo(combo))
+                btn.bind('<ButtonRelease-1>',
+                         lambda _e, combo=keys: self._release_combo(combo))
+                btn.bind('<Leave>',
+                         lambda _e, combo=keys: self._release_combo(combo))
+            else:
+                btn.configure(command=self.emergency_stop)
+            for key in keys:
+                self.drive_pad_buttons.setdefault(key, []).append(btn)
         gears = tk.Frame(manual, bg=CARD)
         gears.pack(fill='x', padx=15, pady=(0, 12))
         self._label(gears, 'GEAR', color=MUTED).pack(side='left', padx=(0, 8))
@@ -307,10 +466,19 @@ class BuggyApp:
                  length=342).pack(fill='x')
         self._label(manual, 'Balance only changes MANUAL PWM, not auto tracks or motor wiring.',
                     size=8, color=MUTED).pack(anchor='w', padx=15, pady=(0, 5))
-        self._label(manual, 'KEY RELEASE = ACTIVE BRAKE · SPACE / STOP = ACTIVE BRAKE',
-                    color=AMBER, size=8).pack(anchor='w', padx=15, pady=(0, 12))
+        tuning_actions = tk.Frame(manual, bg=CARD)
+        tuning_actions.pack(fill='x', padx=15, pady=(7, 4))
+        self._button(tuning_actions, 'SAVE TUNING', self.save_tuning,
+                     color='#205e62', width=17).pack(side='left')
+        self._button(tuning_actions, 'RESET', self.reset_tuning,
+                     color='#344c66', width=10).pack(side='right')
+        tk.Label(manual, textvariable=self.preference_status_var, bg=CARD, fg=MUTED,
+                 wraplength=380, justify='left', font=('Segoe UI', 8)).pack(
+                     anchor='w', padx=15, pady=(3, 4))
+        self._label(manual, 'KEY RELEASE = BRAKE · ESC / SPACE = STOP',
+                     color=AMBER, size=8).pack(anchor='w', padx=15, pady=(0, 12))
 
-        auto = self._panel(left, '02   AUTOMATIC TRACKS')
+        auto = self._panel(routes_left, '02   ROUTE DESIGN  /  OPEN LOOP')
         auto.pack(fill='both', expand=True)
         shape_row = tk.Frame(auto, bg=CARD)
         shape_row.pack(fill='x', padx=15, pady=(0, 10))
@@ -366,7 +534,7 @@ class BuggyApp:
         self._button(actions, 'START ROUTE', self.start_route, color='#16876c', width=12).pack(side='left', padx=8)
         self._button(actions, 'STOP', self.emergency_stop, color='#b3324d', width=8).pack(side='right')
 
-        preview_panel = self._panel(right)
+        preview_panel = self._panel(routes_right)
         preview_panel.pack(fill='both', expand=True)
         preview_head = tk.Frame(preview_panel, bg=CARD)
         preview_head.pack(fill='x', padx=15, pady=(12, 7))
@@ -382,8 +550,21 @@ class BuggyApp:
         tk.Label(preview_panel, textvariable=self.progress_var, bg=CARD, fg=CYAN,
                  font=('Segoe UI', 10, 'bold')).pack(anchor='w', padx=15, pady=(0, 12))
 
-        dashboard = self._panel(right, '04   SYSTEM HEALTH / MOTOR TELEMETRY')
-        dashboard.pack(fill='x', pady=(10, 0))
+        motor_display = self._panel(drive_right, 'LIVE DIFF-DRIVE  /  LEFT + RIGHT')
+        motor_display.pack(fill='both', expand=True)
+        self.motor_visual = tk.Canvas(motor_display, bg=CARD_DARK, height=265,
+                                     highlightthickness=0)
+        self.motor_visual.pack(fill='both', expand=True, padx=14, pady=(0, 11))
+        self.motor_visual.bind('<Configure>', lambda _e: self._redraw_drive_visual())
+        info = tk.Frame(motor_display, bg=CARD)
+        info.pack(fill='x', padx=16, pady=(0, 14))
+        tk.Label(info, text='COMMAND / NOT RPM', bg=CARD, fg=AMBER,
+                 font=('Segoe UI', 9, 'bold')).pack(side='left')
+        self._button(info, 'WHY NOT MOVING?', self.open_wheel_doctor,
+                     color='#225d60', width=17).pack(side='right')
+
+        dashboard = self._panel(drive_right, 'LIVE SIGNALS  /  CONTROLLER & TELEMETRY')
+        dashboard.pack(fill='x', pady=(11, 0))
         dash_body = tk.Frame(dashboard, bg=CARD)
         dash_body.pack(fill='x', padx=15, pady=(0, 12))
         tk.Label(dash_body, textvariable=self.command_var, fg=GREEN, bg=CARD,
@@ -410,7 +591,7 @@ class BuggyApp:
                  font=('Consolas', 9)).pack(side='right')
         self._label(dash_body, 'PWM/accepted commands = firmware only, NOT measured wheel RPM.',
                     color=AMBER, size=8).pack(anchor='w', pady=(6, 0))
-        self._label(dash_body, 'BLE drive ~120 ms · idle ~300 ms · Arduino telemetry pauses while moving',
+        self._label(dash_body, 'BLE drive ~160 ms · idle ~650 ms · Arduino telemetry pauses while moving',
                     color=MUTED, size=8).pack(anchor='w', pady=(1, 0))
 
         bottom = tk.Frame(self.root, bg=BG)
@@ -423,7 +604,58 @@ class BuggyApp:
                                 insertbackground=TEXT, relief='flat', padx=10, pady=5,
                                 font=('Consolas', 9), state='disabled')
         self.log_text.pack(fill='x', pady=(4, 0))
-        self.log('FIELD CONSOLE READY: demo is offline; scan BLE to connect real hardware. F1 opens Wheel Doctor.')
+        self._navigate('drive', initial=True)
+        self.log('CABBAGE STUDIO: start in simulator; device needs explicit arm. F1 opens Wheel Doctor.')
+
+    def _navigate(self, name, initial=False):
+        """Switch workspaces without leaving stale motor commands active."""
+        if name not in self.pages:
+            raise ValueError('Unknown workspace: ' + str(name))
+        previous = getattr(self, '_active_page', None)
+        if previous == name and not initial:
+            return
+        if not initial and previous is not None:
+            # Navigating away from a motor-control context is a deliberate brake.
+            # The next drive requires an explicit re-arm, not an old held key.
+            if self.running or self.pressed or self.wheel_probe_active:
+                self.emergency_stop(quiet=True)
+                self.log('Safety brake: workspace changed; release keys and re-arm.')
+        self.pages[name].tkraise()
+        self._active_page = name
+        for page, button in self.nav_buttons.items():
+            button.configure(bg=('#21605f' if page == name else '#11243a'),
+                             fg=TEXT if page == name else MUTED,
+                             activebackground='#286c68')
+        if name == 'routes':
+            self.preview_route(log_errors=False)
+        if name == 'drive':
+            self._redraw_drive_visual()
+        if name == 'system':
+            self._redraw_link_visual()
+
+    def _redraw_drive_visual(self):
+        if not hasattr(self, 'motor_visual'):
+            return
+        if self.online and self.demo:
+            mode = 'SIMULATOR'
+        elif not self.online:
+            mode = 'DISCONNECTED'
+        elif self.brake_latched:
+            mode = 'STOP / ARMED OFF'
+        elif self.running:
+            mode = 'ROUTE'
+        else:
+            mode = 'MANUAL'
+        l, r = int(self.applied_left), int(self.applied_right)
+        render_drive(self.motor_visual, l, r, mode, self.brake_latched)
+
+    def _redraw_link_visual(self):
+        if not hasattr(self, 'link_visual'):
+            return
+        age = time.monotonic()-self._last_tx_at if self.online and self._last_tx_at else None
+        has_reply = bool(self.online and not self.demo and self.last_feedback
+                         and time.monotonic()-self.last_feedback_at < 2.5)
+        render_link_health(self.link_visual, self.online and not self.demo, has_reply, age)
 
     def log(self, message):
         self.log_text.configure(state='normal')
@@ -439,6 +671,35 @@ class BuggyApp:
         else:
             self.diagnostic_window.top.lift()
             self.diagnostic_window.top.focus_force()
+
+    def open_guide(self):
+        # Reading safety instructions must never leave an active drive behind.
+        self.emergency_stop(quiet=True)
+        if self.guide_window is None:
+            self.guide_window = GuideWindow(self)
+        else:
+            self.guide_window.top.lift()
+
+    def open_preflight(self):
+        # Preflight is non-driving. A real BLE link must be disconnected first.
+        if self.online and not self.demo:
+            self.emergency_stop(quiet=True)
+            messagebox.showwarning('Disconnect motor link first',
+                'Preflight runs only in simulator or disconnected mode. '
+                'The emergency stop has been requested; disconnect BLE before continuing.')
+            return
+        if self.preflight_window is None:
+            self.preflight_window = PreflightWindow(self)
+        else:
+            self.preflight_window.top.lift()
+
+    def open_power_path(self):
+        # Source-power troubleshooting never deliberately commands motors.
+        self.emergency_stop(quiet=True)
+        if self.power_path_window is None:
+            self.power_path_window = PowerPathWindow(self)
+        else:
+            self.power_path_window.top.lift()
 
     def open_wheel_doctor(self):
         # Suppress all ordinary drive commands before opening live diagnostics.
@@ -617,6 +878,34 @@ class BuggyApp:
         self.log('Offline link stress simulation ' + ('passed' if ok else 'FAILED'))
         messagebox.showinfo('Offline link stress (synthetic)', details)
 
+    def save_tuning(self):
+        """Persist tuning only; never motion, emergency state or BLE auto-connect."""
+        if self.online and not self.demo and (self.running or self.pressed):
+            self.emergency_stop(quiet=True)
+        data = dict(gear=self.gear, precision=self.precision_var.get(),
+                    steering=self.steering_var.get(), balance=self.balance_var.get(),
+                    gatt_uuid=self.uuid_var.get().strip(),
+                    measured_speed_cm_s=self.speed_var.get(),
+                    wheel_spacing_cm=self.width_var.get())
+        try:
+            path = save_preferences(data)
+        except (OSError, ValueError) as exc:
+            self.preference_status_var.set('SAVE FAILED: ' + str(exc))
+            self.log('Preferences not saved: ' + str(exc))
+            return
+        self.preference_status_var.set('SAVED  /  Safe defaults for next launch; drive remains locked')
+        self.log('Operator tuning saved: ' + str(path))
+
+    def reset_tuning(self):
+        if self.online and not self.demo and (self.running or self.pressed):
+            self.emergency_stop(quiet=True)
+        self.steering_var.set(DEFAULTS['steering'])
+        self.balance_var.set(DEFAULTS['balance'])
+        self.precision_var.set(DEFAULTS['precision'])
+        self.set_gear(DEFAULTS['gear'])
+        self.preference_status_var.set('RESET  /  Click SAVE TUNING to keep these values')
+        self.log('Tuning reset to safe defaults. No physical wheel test conducted.')
+
     def _precision_changed(self):
         # Never silently alter a motor's live PWM while the user is moving.
         if self.pressed and self.online:
@@ -657,11 +946,19 @@ class BuggyApp:
         return None
 
     def _scroll_left(self, event):
-        # Scroll route controls only while the pointer is within the left panel.
-        lx, ly = self.left_outer.winfo_rootx(), self.left_outer.winfo_rooty()
-        if lx <= event.x_root < lx + self.left_outer.winfo_width() and \
-           ly <= event.y_root < ly + self.left_outer.winfo_height():
-            self.left_canvas.yview_scroll(-int(event.delta / 120), 'units')
+        # Scroll only the currently visible pane under the pointer.
+        if not event.delta:
+            return
+        target = ((self.left_outer, self.left_canvas)
+                  if self._active_page == 'drive' else
+                  (self.route_left_outer, self.route_left_canvas)
+                  if self._active_page == 'routes' else None)
+        if target is None:
+            return
+        outer, canvas = target
+        lx, ly = outer.winfo_rootx(), outer.winfo_rooty()
+        if lx <= event.x_root < lx+outer.winfo_width() and ly <= event.y_root < ly+outer.winfo_height():
+            canvas.yview_scroll(-int(event.delta / 120), 'units')
 
     def _bind_keys(self):
         # bind_all also captures keystrokes when focus is on a Button or Frame.
@@ -746,9 +1043,26 @@ class BuggyApp:
         if key == 'ESCAPE':
             self.emergency_stop()
             return 'break'
+        # An open diagnostic/dialog window must never inherit live WASD controls.
+        # Escape above still acts as a global emergency stop.
+        try:
+            if event.widget.winfo_toplevel() is not self.root:
+                # An auxiliary window must NEVER send motor commands, but its
+                # search/input fields must still accept normal text and numbers.
+                if self._typing(event.widget):
+                    self.last_input_var.set('INPUT: dialog text input; motor shortcuts disabled')
+                    return
+                return 'break'
+        except (AttributeError, tk.TclError):
+            return 'break'
+        # Entries and route-editor text always receive typed digits/letters,
+        # even outside the DRIVE workspace. Only MOTOR shortcuts are blocked.
         if self._typing(event.widget):
-            self.last_input_var.set(f'INPUT: {key} ignored — text field focused; click ACTIVATE WASD')
+            self.last_input_var.set(f'INPUT: {key} ignored as MOTOR command — typing continues in the text field')
             return
+        if self._active_page != 'drive' and key in ('W', 'A', 'S', 'D', '1', '2', '3', '4'):
+            self.last_input_var.set('INPUT: open DRIVE workspace and ACTIVATE WASD first')
+            return 'break'
         self.last_input_var.set(f'INPUT: detected {key} ({event.widget.winfo_class()})')
         if key in ('W', 'A', 'S', 'D'):
             self._keyboard_pressed.add(key)
@@ -832,8 +1146,55 @@ class BuggyApp:
             self._apply_release_brake()
         self._display_manual_command()
 
+    def _press_combo(self, keys):
+        """Apply a diagonal as ONE atomic left/right intent, not W then A pulses."""
+        if self._active_page != 'drive' or self.diagnosis.is_running or self.keyboard_test_active or self.wheel_probe_active:
+            return
+        if self.running:
+            self.emergency_stop(quiet=True)
+            return
+        if any(k in self._blocked_drive_keys for k in keys):
+            return
+        if self.online and not self.demo and getattr(self.bridge, '_emergency_latched', False):
+            self.last_input_var.set('INPUT: E-STOP active — ACTIVATE WASD before mouse driving')
+            return
+        for key in keys:
+            self._pressed_sources[key].add('mouse')
+            self.pressed.add(key)
+            self.flight.record('INPUT', f'{key}_DOWN', 'mouse-pad')
+        self.brake_latched = False
+        if self.online and not self.demo:
+            self.bridge.set_motor(*self._manual_wheels())
+        self.last_input_var.set('INPUT: ' + '+'.join(keys) + ' / POINTER HELD')
+        self._display_manual_command()
+
+    def _release_combo(self, keys):
+        changed = False
+        for key in keys:
+            if 'mouse' in self._pressed_sources[key]:
+                self._pressed_sources[key].discard('mouse')
+                if not self._pressed_sources[key]:
+                    self.pressed.discard(key)
+                self.flight.record('INPUT', f'{key}_UP', 'mouse-pad')
+                changed = True
+        if not changed:
+            return
+        if not self.pressed and not self.running:
+            self._apply_release_brake()
+        elif self.online and not self.demo:
+            self.bridge.set_motor(*self._manual_wheels())
+        self._display_manual_command()
+
+    def _paint_drive_pad(self):
+        for key, buttons in getattr(self, 'drive_pad_buttons', {}).items():
+            for button in buttons:
+                label = button.cget('text')
+                combo = set(label.replace(' ', '').split('+'))
+                button.configure(bg='#227969' if combo.issubset(self.pressed) else '#19364e')
+
     def _display_manual_command(self):
         self.keys_var.set('HELD KEYS: ' + (' + '.join(sorted(self.pressed)) if self.pressed else 'none'))
+        self._paint_drive_pad()
         if not self.running:
             left, right = self._manual_wheels()
             suffix = ' (DEMO)' if self.demo else (' (DISCONNECTED)' if not self.online else '')
@@ -888,15 +1249,32 @@ class BuggyApp:
         self.drive_state_var.set('ACTIVE BRAKE / KEY RELEASE')
 
     def _clear_button_drive(self):
-        # Mouse release does not clear keyboard-held inputs unless window lost focus.
+        """Atomically clear every pointer input on global mouse-up.
+
+        A missed ButtonRelease must never leave a wheel moving, and a diagonal
+        release must not produce an intermediate one-wheel pivot frame.
+        Real keyboard-held keys stay independent when focus remains in-app.
+        """
+        held_by_mouse = tuple(key for key in 'WASD'
+                              if 'mouse' in self._pressed_sources[key])
+        if held_by_mouse:
+            self._release_combo(held_by_mouse)
         if not self.root.focus_displayof():
             self._release_all_keys()
 
     def _steering_changed(self, _value=None):
+        # Changing steering while a physical key is held can abruptly change
+        # one motor's PWM. Require a fresh explicit arm after a live adjustment.
+        if self.online and not self.demo and self.pressed:
+            self.emergency_stop(quiet=True)
+            self.log('Live steering adjusted: safety brake. Re-arm after releasing keys.')
         self.steering_info_var.set(f'STEERING {self.steering_var.get()}%')
         self._display_manual_command()
 
     def _balance_changed(self, _value=None):
+        if self.online and not self.demo and self.pressed:
+            self.emergency_stop(quiet=True)
+            self.log('Live motor balance adjusted: safety brake. Re-arm after releasing keys.')
         pct = self.balance_var.get()
         self.balance_info_var.set(
             f'MOTOR BALANCE {pct:+d}% (favors {"RIGHT" if pct > 0 else "LEFT"})'
@@ -904,6 +1282,12 @@ class BuggyApp:
         self._display_manual_command()
 
     def set_gear(self, gear):
+        gear = int(gear)
+        if gear not in (1, 2, 3, 4):
+            raise ValueError('Gear must be 1..4')
+        if self.online and not self.demo and (self.pressed or self.running) and gear != self.gear:
+            self.emergency_stop(quiet=True)
+            self.log('Gear changed during motor drive: braking; re-arm before moving again.')
         self.gear = gear
         self._paint_gears()
         self.gear_info_var.set(self._gear_caption())
@@ -1378,6 +1762,9 @@ class BuggyApp:
         self._redraw_telemetry_bars()
         if self.diagnostic_window is not None:
             self.diagnostic_window.refresh()
+        self._redraw_drive_visual()
+        if self._active_page == 'system':
+            self._redraw_link_visual()
         self._tick_after = self.root.after(80, self._tick)
 
     def _redraw_telemetry_bars(self):
