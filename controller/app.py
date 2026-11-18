@@ -15,30 +15,31 @@ from diagnostics import DiagnosticReport, interpret_error, usb_port_diagnosis
 from diagnostic_window import DiagnosticWindow
 from wheel_doctor_window import WheelDoctorWindow
 from wheel_doctor import audit_sources
+from premium_visuals import render_drive, render_link_health, command_label
 from route_planner import Planner, GEARS, sample_path, route_pose
 from motor_control import manual_wheels, balance_wheels
 from flight_recorder import FlightRecorder, offline_control_check
 from link_stress_lab import offline_link_stress_check
 
-BG = '#0b1020'
-CARD = '#141d30'
-CARD_DARK = '#10182a'
-BORDER = '#2c3850'
-TEXT = '#f1f5ff'
-MUTED = '#99abc7'
-CYAN = '#55d9e9'
-GREEN = '#4ddd9c'
-AMBER = '#f5c26b'
-RED = '#ff667e'
-BLUE = '#447bd0'
+BG = '#08111e'
+CARD = '#132238'
+CARD_DARK = '#0c192b'
+BORDER = '#2b425b'
+TEXT = '#e9f5ff'
+MUTED = '#9ab4cd'
+CYAN = '#57e7cc'
+GREEN = '#60ebbd'
+AMBER = '#f2c17a'
+RED = '#ff7487'
+BLUE = '#567ee5'
 
 
 class BuggyApp:
     def __init__(self, root):
         self.root = root
-        root.title('Buggy Control Center / Field Lab v1.7 CANDIDATE — bench-test only')
-        root.geometry('1280x900')
-        root.minsize(1000, 700)
+        root.title('CABBAGE / Buggy Control Studio v1.8 — candidate')
+        root.geometry('1380x900')
+        root.minsize(1020, 690)
         root.configure(bg=BG)
 
         self._closed = False
@@ -173,49 +174,106 @@ class BuggyApp:
         return entry
 
     def _build_ui(self):
+        # First-party Tk canvas design; no heavyweight UI framework or network assets.
         header = tk.Frame(self.root, bg=BG)
-        header.pack(fill='x', padx=20, pady=(15, 8))
-        tk.Label(header, text='BUGGY', fg=CYAN, bg=BG,
-                 font=('Segoe UI', 26, 'bold')).pack(side='left')
-        tk.Label(header, text=' / FIELD CONSOLE', fg=TEXT, bg=BG,
-                 font=('Segoe UI', 17, 'bold')).pack(side='left', pady=(6, 0))
-        tk.Label(header, textvariable=self.status_var, fg=AMBER, bg=BG,
-                 font=('Segoe UI', 11, 'bold')).pack(side='right', pady=(8, 0))
+        header.pack(fill='x', padx=22, pady=(14, 10))
+        tk.Label(header, text='C /', fg=CYAN, bg=BG,
+                 font=('Segoe UI', 29, 'bold')).pack(side='left')
+        tk.Label(header, text='CABBAGE', fg=TEXT, bg=BG,
+                 font=('Segoe UI', 24, 'bold')).pack(side='left', padx=(7, 7))
+        tk.Label(header, text='CONTROL STUDIO    1.8  /  CANDIDATE',
+                 fg=MUTED, bg=BG, font=('Segoe UI', 10, 'bold')).pack(
+                     side='left', pady=(16, 0))
+        self.connection_badge = tk.Label(header, textvariable=self.status_var,
+                 fg=AMBER, bg=CARD, padx=16, pady=9,
+                 font=('Segoe UI', 10, 'bold'))
+        self.connection_badge.pack(side='right', pady=(4, 0))
 
         bar = self._panel(self.root)
-        bar.pack(fill='x', padx=20, pady=(0, 12))
+        bar.pack(fill='x', padx=22, pady=(0, 9))
         row = tk.Frame(bar, bg=CARD)
-        row.pack(fill='x', padx=12, pady=11)
-        self._button(row, 'SCAN BLE', self.scan, color='#305c91', width=10).pack(side='left', padx=(0, 10))
+        row.pack(fill='x', padx=14, pady=11)
+        self._label(row, 'CONNECT', color=CYAN, bold=True, size=9).pack(side='left', padx=(0, 10))
+        self._button(row, 'FIND DEVICES', self.scan, color='#284b66', width=14).pack(
+            side='left', padx=(0, 10))
         self.device_combo = ttk.Combobox(row, textvariable=self.device_var,
-                                          style='Dark.TCombobox', state='readonly', width=31)
+                        style='Dark.TCombobox', state='readonly', width=27)
         self.device_combo.pack(side='left', padx=(0, 12))
-        self._label(row, 'GATT UUID', color=MUTED).pack(side='left', padx=(0, 6))
-        self._entry(row, self.uuid_var, 8).pack(side='left', padx=(0, 12))
-        tk.Checkbutton(row, text='Demo mode', variable=self.demo_var, bg=CARD, fg=MUTED,
-                       selectcolor=CARD_DARK, activebackground=CARD, activeforeground=TEXT,
-                       font=('Segoe UI', 10)).pack(side='left', padx=(0, 12))
+        self._label(row, 'UART', color=MUTED, size=9).pack(side='left', padx=(0, 7))
+        self._entry(row, self.uuid_var, 7).pack(side='left', padx=(0, 9))
+        tk.Checkbutton(row, text='SIMULATOR', variable=self.demo_var, bg=CARD,
+                       fg=MUTED, selectcolor=CARD_DARK, activebackground=CARD,
+                       activeforeground=TEXT, font=('Segoe UI', 9, 'bold')).pack(
+                           side='left', padx=(0, 12))
         self.connect_btn = self._button(row, 'CONNECT', self.toggle_connection,
-                                         color='#197f83', width=12)
+                                      color='#157d75', width=12)
         self.connect_btn.pack(side='left')
-        self._button(row, 'DIAGNOSTICS', self.open_diagnostics, color='#6b528f',
-                     width=13).pack(side='left', padx=(10, 0))
+        self._button(row, 'EMERGENCY STOP', self.emergency_stop,
+                     color='#b53c56', width=17).pack(side='right', padx=(8, 0))
 
-        health = tk.Frame(self.root, bg=CARD_DARK, highlightbackground=BORDER, highlightthickness=1)
-        health.pack(fill='x', padx=20, pady=(0, 12))
-        tk.Label(health, text='LIVE SAFETY / CONNECTION', bg=CARD_DARK, fg=CYAN,
-                 font=('Segoe UI', 9, 'bold')).pack(side='left', padx=(12, 12), pady=8)
+        health = tk.Frame(self.root, bg=CARD_DARK,
+                          highlightbackground=BORDER, highlightthickness=1)
+        health.pack(fill='x', padx=22, pady=(0, 11))
+        tk.Label(health, text='SYSTEM STATUS', bg=CARD_DARK, fg=CYAN,
+                 font=('Segoe UI', 9, 'bold')).pack(side='left', padx=(14, 14), pady=8)
         tk.Label(health, textvariable=self.quick_health_var, bg=CARD_DARK, fg=TEXT,
-                 font=('Segoe UI', 10), anchor='w').pack(side='left', fill='x', expand=True)
-        self._button(health, 'PIN + WHEEL HELP [F1]', self.open_wheel_doctor,
-                     color='#28546a', width=21).pack(side='right', padx=8, pady=5)
+                 font=('Segoe UI', 9), anchor='w').pack(side='left', fill='x', expand=True)
+        self._button(health, 'WHEEL DOCTOR   F1', self.open_wheel_doctor,
+                     color='#284d61', width=20).pack(side='right', padx=8, pady=5)
 
         work = tk.Frame(self.root, bg=BG)
-        work.pack(fill='both', expand=True, padx=20)
-        left_outer = tk.Frame(work, bg=BG, width=405)
-        left_outer.pack(side='left', fill='y', padx=(0, 12))
+        work.pack(fill='both', expand=True, padx=22)
+        rail = tk.Frame(work, bg='#0b1929', width=192,
+                        highlightbackground=BORDER, highlightthickness=1)
+        rail.pack(side='left', fill='y', padx=(0, 13))
+        rail.pack_propagate(False)
+        tk.Label(rail, text='WORKSPACES', bg='#0b1929', fg=MUTED,
+                 font=('Segoe UI', 9, 'bold')).pack(anchor='w', padx=17, pady=(18, 14))
+        self.nav_buttons = {}
+        for name, title, caption in (
+                ('drive', '01   DRIVE', 'Manual cockpit'),
+                ('routes', '02   ROUTES', 'Route design'),
+                ('system', '03   SYSTEM', 'Diagnostics & power')):
+            holder = tk.Frame(rail, bg='#0b1929')
+            holder.pack(fill='x', padx=8, pady=3)
+            btn = tk.Button(holder, text=title, command=lambda n=name: self._navigate(n),
+                            bg='#11243a', fg=TEXT, activebackground='#1d4859',
+                            activeforeground=TEXT, anchor='w', relief='flat',
+                            padx=11, pady=13, cursor='hand2',
+                            font=('Segoe UI', 11, 'bold'))
+            btn.pack(fill='x')
+            self.nav_buttons[name] = btn
+            tk.Label(holder, text=caption, bg='#0b1929', fg=MUTED,
+                     font=('Segoe UI', 8), anchor='w').pack(fill='x', padx=10, pady=(2, 4))
+        tk.Frame(rail, bg='#0b1929', height=14).pack()
+        tk.Label(rail, text='QUICK ACTIONS', bg='#0b1929', fg=MUTED,
+                 font=('Segoe UI', 9, 'bold')).pack(anchor='w', padx=17, pady=(8, 8))
+        self._button(rail, 'WHEEL DOCTOR', self.open_wheel_doctor,
+                     color='#225d60', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'FULL DIAGNOSIS', self.open_diagnostics,
+                     color='#344e73', width=19).pack(fill='x', padx=9, pady=4)
+        self._button(rail, 'BRAKE / ESC', self.emergency_stop,
+                     color='#97374e', width=19).pack(fill='x', padx=9, pady=4)
+        tk.Label(rail, text='DRIVE SHORTCUTS\nW A S D  ·  1–4 gears\nESC or Space  ·  STOP',
+                 justify='left', bg='#0b1929', fg=MUTED,
+                 font=('Segoe UI', 9)).pack(side='bottom', anchor='w',
+                                           padx=15, pady=18)
+
+        content = tk.Frame(work, bg=BG)
+        content.pack(side='left', fill='both', expand=True)
+        self.pages = {}
+        for name in ('drive', 'routes', 'system'):
+            page = tk.Frame(content, bg=BG)
+            page.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self.pages[name] = page
+        self._active_page = None
+
+        drive = self.pages['drive']
+        left_outer = tk.Frame(drive, bg=BG, width=430)
+        left_outer.pack(side='left', fill='y', padx=(0, 13))
         left_outer.pack_propagate(False)
-        left_scrollbar = tk.Scrollbar(left_outer, orient='vertical', width=11)
+        left_scrollbar = tk.Scrollbar(left_outer, orient='vertical', width=10,
+                                     bg=CARD, troughcolor=BG, activebackground=CYAN)
         left_scrollbar.pack(side='right', fill='y')
         left_canvas = tk.Canvas(left_outer, bg=BG, highlightthickness=0,
                                 yscrollcommand=left_scrollbar.set)
@@ -224,14 +282,68 @@ class BuggyApp:
         left = tk.Frame(left_canvas, bg=BG)
         left_id = left_canvas.create_window((0, 0), window=left, anchor='nw')
         left.bind('<Configure>', lambda _e: left_canvas.configure(
-                  scrollregion=left_canvas.bbox('all')))
+                    scrollregion=left_canvas.bbox('all')))
         left_canvas.bind('<Configure>', lambda e: left_canvas.itemconfigure(
-                         left_id, width=e.width))
+                    left_id, width=e.width))
         self.left_canvas = left_canvas
         self.left_outer = left_outer
         self.root.bind_all('<MouseWheel>', self._scroll_left)
-        right = tk.Frame(work, bg=BG)
-        right.pack(side='left', fill='both', expand=True)
+        drive_right = tk.Frame(drive, bg=BG)
+        drive_right.pack(side='left', fill='both', expand=True)
+
+        route_page = self.pages['routes']
+        route_outer = tk.Frame(route_page, bg=BG, width=430)
+        route_outer.pack(side='left', fill='y', padx=(0, 13))
+        route_outer.pack_propagate(False)
+        route_scrollbar = tk.Scrollbar(route_outer, orient='vertical', width=10,
+                                      bg=CARD, troughcolor=BG, activebackground=CYAN)
+        route_scrollbar.pack(side='right', fill='y')
+        route_canvas = tk.Canvas(route_outer, bg=BG, highlightthickness=0,
+                                 yscrollcommand=route_scrollbar.set)
+        route_canvas.pack(side='left', fill='both', expand=True)
+        route_scrollbar.config(command=route_canvas.yview)
+        routes_left = tk.Frame(route_canvas, bg=BG)
+        route_left_id = route_canvas.create_window((0, 0), window=routes_left, anchor='nw')
+        routes_left.bind('<Configure>', lambda _e: route_canvas.configure(
+                         scrollregion=route_canvas.bbox('all')))
+        route_canvas.bind('<Configure>', lambda e: route_canvas.itemconfigure(
+                         route_left_id, width=e.width))
+        self.route_left_outer = route_outer
+        self.route_left_canvas = route_canvas
+        routes_right = tk.Frame(route_page, bg=BG)
+        routes_right.pack(side='left', fill='both', expand=True)
+
+        system = self.pages['system']
+        sys_header = self._panel(system, '03   SYSTEM LAB  /  HARDWARE + COMMUNICATION')
+        sys_header.pack(fill='x', pady=(0, 12))
+        tk.Label(sys_header, text='Troubleshoot one layer at a time. Software passes never prove wheel rotation.',
+                 bg=CARD, fg=MUTED, anchor='w', font=('Segoe UI', 11)).pack(
+                     fill='x', padx=17, pady=(0, 12))
+        sys_actions = tk.Frame(sys_header, bg=CARD)
+        sys_actions.pack(fill='x', padx=17, pady=(0, 15))
+        for title, command, color in (
+            ('RUN FULL DIAGNOSIS', self.open_diagnostics, '#286283'),
+            ('WHEEL DOCTOR  /  F1', self.open_wheel_doctor, '#167e78'),
+            ('OFFLINE CONTROL CHECK', self.run_offline_check, '#344d76'),
+            ('LINK STRESS SIMULATOR', self.run_link_stress_check, '#344d76'),
+        ):
+            self._button(sys_actions, title, command, color=color, width=23).pack(
+                 side='left', padx=(0, 9))
+        sys_card = self._panel(system, 'THREE-LAYER CONNECTION HEALTH')
+        sys_card.pack(fill='x', pady=(0, 12))
+        self.link_visual = tk.Canvas(sys_card, height=81, bg=CARD_DARK, highlightthickness=0)
+        self.link_visual.pack(fill='x', padx=16, pady=(0, 15))
+        self.link_visual.bind('<Configure>', lambda _e: self._redraw_link_visual())
+        notes = self._panel(system, 'CHECK MOTOR POWER BEFORE REWIRING')
+        notes.pack(fill='x')
+        self._label(notes, '1  Uno USB light on does NOT prove that the motor supply VM is powered.',
+                    color=TEXT, size=10).pack(anchor='w', padx=17, pady=(0, 8))
+        self._label(notes, '2  HM-10 can disappear on battery power if its own VCC rail drops or wiring differs.',
+                    color=TEXT, size=10).pack(anchor='w', padx=17, pady=(0, 8))
+        self._label(notes, '3  Check STBY, battery ground, VM, 3.3V breakout rating and D2/D3 crossed UART.',
+                    color=TEXT, size=10).pack(anchor='w', padx=17, pady=(0, 8))
+        self._label(notes, 'Source pin audit is available under WHEEL DOCTOR; actual voltages require a meter.',
+                    color=AMBER, size=9).pack(anchor='w', padx=17, pady=(0, 16))
 
         manual = self._panel(left, '01   DRIVE DECK  /  WASD')
         manual.configure(takefocus=1)
@@ -310,7 +422,7 @@ class BuggyApp:
         self._label(manual, 'KEY RELEASE = ACTIVE BRAKE · SPACE / STOP = ACTIVE BRAKE',
                     color=AMBER, size=8).pack(anchor='w', padx=15, pady=(0, 12))
 
-        auto = self._panel(left, '02   AUTOMATIC TRACKS')
+        auto = self._panel(routes_left, '02   ROUTE DESIGN  /  OPEN LOOP')
         auto.pack(fill='both', expand=True)
         shape_row = tk.Frame(auto, bg=CARD)
         shape_row.pack(fill='x', padx=15, pady=(0, 10))
@@ -366,7 +478,7 @@ class BuggyApp:
         self._button(actions, 'START ROUTE', self.start_route, color='#16876c', width=12).pack(side='left', padx=8)
         self._button(actions, 'STOP', self.emergency_stop, color='#b3324d', width=8).pack(side='right')
 
-        preview_panel = self._panel(right)
+        preview_panel = self._panel(routes_right)
         preview_panel.pack(fill='both', expand=True)
         preview_head = tk.Frame(preview_panel, bg=CARD)
         preview_head.pack(fill='x', padx=15, pady=(12, 7))
@@ -382,8 +494,21 @@ class BuggyApp:
         tk.Label(preview_panel, textvariable=self.progress_var, bg=CARD, fg=CYAN,
                  font=('Segoe UI', 10, 'bold')).pack(anchor='w', padx=15, pady=(0, 12))
 
-        dashboard = self._panel(right, '04   SYSTEM HEALTH / MOTOR TELEMETRY')
-        dashboard.pack(fill='x', pady=(10, 0))
+        motor_display = self._panel(drive_right, 'LIVE DIFF-DRIVE  /  LEFT + RIGHT')
+        motor_display.pack(fill='both', expand=True)
+        self.motor_visual = tk.Canvas(motor_display, bg=CARD_DARK, height=265,
+                                     highlightthickness=0)
+        self.motor_visual.pack(fill='both', expand=True, padx=14, pady=(0, 11))
+        self.motor_visual.bind('<Configure>', lambda _e: self._redraw_drive_visual())
+        info = tk.Frame(motor_display, bg=CARD)
+        info.pack(fill='x', padx=16, pady=(0, 14))
+        tk.Label(info, text='COMMAND / NOT RPM', bg=CARD, fg=AMBER,
+                 font=('Segoe UI', 9, 'bold')).pack(side='left')
+        self._button(info, 'WHY NOT MOVING?', self.open_wheel_doctor,
+                     color='#225d60', width=17).pack(side='right')
+
+        dashboard = self._panel(drive_right, 'LIVE SIGNALS  /  CONTROLLER & TELEMETRY')
+        dashboard.pack(fill='x', pady=(11, 0))
         dash_body = tk.Frame(dashboard, bg=CARD)
         dash_body.pack(fill='x', padx=15, pady=(0, 12))
         tk.Label(dash_body, textvariable=self.command_var, fg=GREEN, bg=CARD,
@@ -423,7 +548,8 @@ class BuggyApp:
                                 insertbackground=TEXT, relief='flat', padx=10, pady=5,
                                 font=('Consolas', 9), state='disabled')
         self.log_text.pack(fill='x', pady=(4, 0))
-        self.log('FIELD CONSOLE READY: demo is offline; scan BLE to connect real hardware. F1 opens Wheel Doctor.')
+        self._navigate('drive', initial=True)
+        self.log('CABBAGE STUDIO: start in simulator; device needs explicit arm. F1 opens Wheel Doctor.')
 
     def log(self, message):
         self.log_text.configure(state='normal')
